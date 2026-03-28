@@ -13,7 +13,7 @@ This repository contains a **collection of userscripts** for **Recalbox**, desig
 2. Read that script's `README.md` for specific details
 3. Follow the installation instructions
 
-**Example**: `script-espace-emulateurs/README.md` → script details
+**Example**: `v10/fix-daphne-4k/README.md` → script details
 
 ## Available Scripts
 *(Auto-generated list or manually completed)*
