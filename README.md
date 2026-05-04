@@ -5,7 +5,7 @@ This repository contains a **collection of userscripts** for **Recalbox**, desig
 ## How it works?
 - Each folder/script has its **own README.md** with:
   - **Benefits** and **features**
-  - **Installation instructions**
+  - **[Installation instructions](INSTALL-SCRIPTS.md)**
   - **Requirements** and **compatibility**
 
 ## Usage
@@ -16,4 +16,9 @@ This repository contains a **collection of userscripts** for **Recalbox**, desig
 **Example**: `v10/fix-daphne-4k/README.md` → script details
 
 ## Available Scripts
-*(Auto-generated list or manually completed)*
+
+| Script | Description |
+|---|---|
+| [fix-daphne-4k](v10/fix-daphne-4k/) | Fix Daphne/Hypseus rendering on 4K displays |
+| [shell-aliases](v10/shell-aliases/) | Add useful shell aliases and shortcuts at boot |
+| [webmanager-addon](v10/webmanager-addon/) | Add custom action buttons to the native web manager |

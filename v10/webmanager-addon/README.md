@@ -23,23 +23,13 @@ Useful when a game is frozen or you want to exit without physical access to the 
 
 ## Installation
 
-Copy the script to the Recalbox userscripts directory:
+Deploy `webmanager-addon[start](sync).py3` to your Recalbox — see [How to install a userscript](../../INSTALL-SCRIPTS.md).
 
-```
-scp "webmanager-addon[start](sync).py3" root@recalbox.local:/recalbox/share/userscripts/
-```
-
-Reboot or restart EmulationStation. The script runs automatically.
-
-No modification to `recalbox.conf` or any other system file is required.
+Reboot or restart EmulationStation. No modification to `recalbox.conf` is required.
 
 ## Uninstallation
 
-Deploy the uninstall userscript to the Recalbox:
-
-```
-scp "uninstall-webmanager-addon[start](sync).py3" root@recalbox.local:/recalbox/share/userscripts/
-```
+Deploy `uninstall-webmanager-addon[start](sync).py3` to your Recalbox — see [How to install a userscript](../../INSTALL-SCRIPTS.md).
 
 Reboot or restart EmulationStation. The script will:
 - Stop and remove the daemon (init.d script + PID file)
@@ -72,6 +62,8 @@ The server dynamically loads the list of emulator binaries from `configgen.recal
 ## Compatibility
 
 > **This script was written and tested exclusively on Raspberry Pi 5 running Recalbox 10.0.**
+>
+> It should work on all architectures since the emulator list is loaded dynamically from configgen, but this has not been tested.
 >
 > The frontend patch targets specific patterns in the minified JS bundle. Different Recalbox versions may use different filenames or code patterns. If the patch fails, the script logs a warning and continues — the API server still works via the mini UI.
 
