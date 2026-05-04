@@ -15,13 +15,37 @@ A Recalbox userscript that extends the native web manager (port 20666) with cust
 
 ## Current Add-ons
 
-### Quitter l'emulateur
-
-A "Kill Emulator" button injected into the web manager's gear menu (actions menu), as the last item after "Stop EmulationStation". Sends SIGTERM to the running emulator, waits 3 seconds, then SIGKILL if still alive.
+### Kill Emulator
 
 Useful when a game is frozen or you want to exit without physical access to the controller.
 
 ![Kill Emulator button in the web manager gear menu](webmanager-addon-kill-emulator.png)
+
+## Installation
+
+Copy the script to the Recalbox userscripts directory:
+
+```
+scp "webmanager-addon[start](sync).py3" root@recalbox.local:/recalbox/share/userscripts/
+```
+
+Reboot or restart EmulationStation. The script runs automatically.
+
+No modification to `recalbox.conf` or any other system file is required.
+
+## Uninstallation
+
+Deploy the uninstall userscript to the Recalbox:
+
+```
+scp "uninstall-webmanager-addon[start](sync).py3" root@recalbox.local:/recalbox/share/userscripts/
+```
+
+Reboot or restart EmulationStation. The script will:
+- Stop and remove the daemon (init.d script + PID file)
+- Remove the generated server script and the webmanager-addon userscript
+- Restore the original web manager frontend files from squashfs
+- Delete itself
 
 ## How it works
 
@@ -51,32 +75,6 @@ The server dynamically loads the list of emulator binaries from `configgen.recal
 >
 > The frontend patch targets specific patterns in the minified JS bundle. Different Recalbox versions may use different filenames or code patterns. If the patch fails, the script logs a warning and continues — the API server still works via the mini UI.
 
-## Installation
-
-Copy the script to the Recalbox userscripts directory:
-
-```
-scp "webmanager-addon[start](sync).py3" root@recalbox.local:/recalbox/share/userscripts/
-```
-
-Reboot or restart EmulationStation. The script runs automatically.
-
-No modification to `recalbox.conf` or any other system file is required.
-
-## Uninstallation
-
-Deploy the uninstall userscript to the Recalbox:
-
-```
-scp "uninstall-webmanager-addon[start](sync).py3" root@recalbox.local:/recalbox/share/userscripts/
-```
-
-Reboot or restart EmulationStation. The script will:
-- Stop and remove the daemon (init.d script + PID file)
-- Remove the generated server script and the webmanager-addon userscript
-- Restore the original web manager frontend files from squashfs
-- Delete itself
-
 ## File structure
 
 ### On the host (this repo)
@@ -103,7 +101,7 @@ webmanager-addon/
 
 ### v1.0 — Initial release
 - Micro HTTP API server with kill-emulator and status endpoints
-- Frontend patch injecting "Quitter l'emulateur" button in gear menu
+- Frontend patch injecting "Kill Emulator" button in gear menu
 - Mini standalone web UI on port 8081
 - SIGTERM + 3s grace period + SIGKILL kill sequence
 - Init.d daemon for persistence across ES restarts
