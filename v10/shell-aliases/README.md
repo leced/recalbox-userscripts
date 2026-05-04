@@ -19,7 +19,7 @@ A Recalbox userscript that adds convenient shell aliases, available in every SSH
 |---|---|---|
 | `ll` | `ls -la` | Long listing with hidden files |
 | `cls` | `clear` | Clear the terminal screen |
-| `roms` | `ls /recalbox/share/roms` | List available ROM folders |
+| `roms` | `cd /recalbox/share/roms` | Go to the ROMs directory |
 
 ## Installation
 
