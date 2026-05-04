@@ -41,7 +41,7 @@ The mini UI is also accessible directly at `http://recalbox.local:8081/`.
 
 ### Recognized Emulators
 
-The server detects running emulator processes by matching against known binaries: retroarch, advmame, hypseus, dolphin, duckstation, PCSX2, PPSSPPSDL, mupen64plus, scummvm, and more (full list in the script).
+The server dynamically loads the list of emulator binaries from `configgen.recalboxFiles.recalboxBins` at startup. This means the list is always up to date with the installed Recalbox version, regardless of the hardware platform.
 
 ## Compatibility
 
@@ -61,6 +61,20 @@ Reboot or restart EmulationStation. The script runs automatically.
 
 No modification to `recalbox.conf` or any other system file is required.
 
+## Uninstallation
+
+Deploy the uninstall userscript to the Recalbox:
+
+```
+scp "uninstall-webmanager-addon[start](sync).py3" root@recalbox.local:/recalbox/share/userscripts/
+```
+
+Reboot or restart EmulationStation. The script will:
+- Stop and remove the daemon (init.d script + PID file)
+- Remove the generated server script and the webmanager-addon userscript
+- Restore the original web manager frontend files from squashfs
+- Delete itself
+
 ## File structure
 
 ### On the host (this repo)
@@ -68,6 +82,7 @@ No modification to `recalbox.conf` or any other system file is required.
 ```
 webmanager-addon/
 ├── webmanager-addon[start](sync).py3    # The userscript (all-in-one)
+├── uninstall-webmanager-addon[start](sync).py3  # Uninstall userscript (one-shot, self-deleting)
 └── README.md                            # This file
 ```
 

@@ -34,14 +34,8 @@ API_SERVER_PATH = "/recalbox/share/userscripts/webmanager-addon-server.py"
 WEB_MANAGER_ASSETS = "/recalbox/web/manager-v3/assets"
 PIDFILE = "/var/run/webmanager-addon.pid"
 
-# Known emulator binaries (from configgen/recalboxFiles.py)
-EMULATOR_BINARIES = [
-    "retroarch", "advmame", "amiberry", "Beebem", "corsix-th", "hypseus",
-    "dolphin", "dolphin-gui", "dosbox", "duckstation", "fba2x", "sfrotz",
-    "GSplus", "hatari", "julius", "moonlight", "mupen64plus", "OpenBOR",
-    "openlara", "oricutron", "pcsx_rearmed", "PCSX2", "pico8", "pisnes",
-    "PPSSPPSDL", "rb5000", "reicast.elf", "scummvm", "dwl",
-]
+# Emulator binaries are loaded dynamically from configgen.recalboxFiles.recalboxBins
+# at server startup (see API_SERVER_CODE). No hardcoded list needed.
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MICRO API SERVER — written to disk, run as daemon
@@ -66,7 +60,19 @@ import threading
 
 PORT = {port}
 
-EMULATOR_BINARIES = {emulator_binaries}
+def _load_emulator_binaries():
+    """Load emulator binary names from configgen at startup."""
+    try:
+        from configgen.recalboxFiles import recalboxBins
+        # Extract just the binary basename from each path
+        bins = set()
+        for path in recalboxBins.values():
+            bins.add(os.path.basename(path))
+        return sorted(bins)
+    except Exception:
+        return []
+
+EMULATOR_BINARIES = _load_emulator_binaries()
 
 def find_emulator_pids():
     """Find PIDs of running emulator processes."""
@@ -210,7 +216,7 @@ def run_server():
 
 if __name__ == "__main__":
     run_server()
-'''.format(port=API_PORT, emulator_binaries=repr(EMULATOR_BINARIES))
+'''.format(port=API_PORT)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
