@@ -276,24 +276,21 @@ def patch_frontend():
         content = f.read()
 
     es_stop_marker = ',i($,{onClick:u[6]||(u[6]=g=>o(h)())'
+    addon_start = '/*WMA*/'
+    addon_end = '/*~WMA*/'
 
-    # Remove any previous patch (strip injected code before the ES stop marker)
-    if "kill-emulator" in content:
-        # Our injection is always immediately before es_stop_marker.
-        # Find and remove it using regex: from our onClick handler to the es_stop_marker
-        old_pattern = r',i\(\$,\{onClick:function\(\)\{fetch\("http://"\+window\.location\.hostname\+[^)]+\)' + re.escape(es_stop_marker)
-        # Simpler approach: split on es_stop_marker, strip our code from the prefix
-        parts = content.split(es_stop_marker)
-        cleaned_parts = []
-        for part in parts:
-            # Our injected code ends right before es_stop_marker and starts with ,i($,{onClick:function(){fetch(
-            kill_btn_start = ',i($,{onClick:function(){fetch("http://"+window.location.hostname+'
-            idx = part.rfind(kill_btn_start)
-            if idx >= 0:
-                part = part[:idx]
-            cleaned_parts.append(part)
-        content = es_stop_marker.join(cleaned_parts)
-        print("[webmanager-addon] Removed previous frontend patch")
+    # Always start from the pristine original (squashfs lower layer)
+    # This guarantees a clean slate regardless of previous patch state.
+    original_path = layout_path.replace("/recalbox/", "/overlay/lower/recalbox/", 1)
+    if os.path.exists(original_path):
+        with open(original_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        print("[webmanager-addon] Loaded pristine MainLayout JS from squashfs")
+    else:
+        # Fallback: strip previous patch using markers
+        if addon_start in content:
+            content = re.sub(re.escape(addon_start) + '.*?' + re.escape(addon_end), '', content)
+            print("[webmanager-addon] Removed previous frontend patch")
 
     # Inject a "Kill Emulator" button before the ES stop button in the actions menu.
     # The button calls our micro API server to gracefully/force kill the running emulator.
@@ -337,7 +334,7 @@ def patch_frontend():
         print("[webmanager-addon] Could not find ES stop button pattern in MainLayout JS")
         return False
 
-    new_content = content.replace(es_stop_marker, kill_button_code + es_stop_marker)
+    new_content = content.replace(es_stop_marker, addon_start + kill_button_code + addon_end + es_stop_marker)
 
     with open(layout_path, "w", encoding="utf-8") as f:
         f.write(new_content)
@@ -354,13 +351,19 @@ def patch_index_html():
         print("[webmanager-addon] index.html not found, skipping observer patch")
         return False
 
-    with open(index_path, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    # Remove previous observer patch if present
-    if "webmanager-addon-observer" in content:
-        content = re.sub(r'<script id="webmanager-addon-observer">.*?</script>', '', content, flags=re.DOTALL)
-        print("[webmanager-addon] Removed previous observer script from index.html")
+    # Always start from the pristine original (squashfs lower layer)
+    original_index = index_path.replace("/recalbox/", "/overlay/lower/recalbox/", 1)
+    if os.path.exists(original_index):
+        with open(original_index, "r", encoding="utf-8") as f:
+            content = f.read()
+        print("[webmanager-addon] Loaded pristine index.html from squashfs")
+    else:
+        with open(index_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        # Fallback: strip previous observer patch
+        if "webmanager-addon-observer" in content:
+            content = re.sub(r'<script id="webmanager-addon-observer">.*?</script>', '', content, flags=re.DOTALL)
+            print("[webmanager-addon] Removed previous observer script from index.html")
 
     # The observer script:
     # - Uses MutationObserver to detect when QFabAction buttons appear (gear menu open)
