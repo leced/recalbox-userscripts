@@ -2,3 +2,5 @@
 .grind-scraper/
 __pycache__/
 *.pyc
+v10/grind-scraper/
+v10/seamless-scraper-proxy/
