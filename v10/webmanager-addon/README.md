@@ -13,15 +13,26 @@ A Recalbox userscript that extends the native web manager (port 20666) with cust
 | **Recalbox** | 10.0.5 |
 | **Tested on** | Raspberry Pi 5 |
 
-## Current Add-ons
+## Features
 
-### Kill Emulator
+| Feature | Description |
+|---|---|
+| [Kill Emulator](#kill-emulator) | Remotely stop a frozen or running emulator from the web manager gear menu |
+| [Now Playing Music](#now-playing-music) | Display the current background music track with album cover art on the home page |
 
-Useful when a game is frozen or you want to exit without physical access to the controller.
+---
+
+## Kill Emulator
+
+Adds a "Kill Emulator" button to the gear menu in the web manager. Useful when a game is frozen or you want to exit without physical access to the controller.
+
+The button sends a graceful SIGTERM, waits 3 seconds, then force-kills with SIGKILL if the process is still alive. The button is automatically disabled when no emulator is running.
 
 ![Kill Emulator button in the web manager gear menu](../../media/webmanager-addon-kill-emulator.png)
 
-### Now Playing Music
+---
+
+## Now Playing Music
 
 When no game is running, the "Game" panel on the home page displays the currently playing background music track, including:
 
@@ -36,6 +47,8 @@ The music detection works by comparing EmulationStation's file descriptor read p
 The cover art search extracts the game name from the track filename and queries khinsider for a matching album. An internet connection is required for cover art; without it, only the track name is displayed.
 
 > **Note on filenames:** The script supports filenames following the `♪ [SYSTEM] Game Name - Track Title.mp3` convention (system and cover art are extracted automatically). Standard filenames like `My Song.mp3` also work — the full filename is displayed as the track title.
+
+---
 
 ## Installation
 
