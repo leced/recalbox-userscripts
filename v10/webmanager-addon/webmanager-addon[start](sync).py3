@@ -47,6 +47,8 @@ webmanager-addon-server — Micro HTTP API for custom Recalbox actions
 Runs on port {port}, exposes:
   GET /api/kill-emulator  — graceful stop then force kill current emulator
   GET /api/status         — check if an emulator is running
+  GET /api/now-playing    — detect currently playing music track
+  GET /api/cover-art?q=   — search album cover art from khinsider
   GET /                   — mini web UI
 """
 
@@ -57,6 +59,9 @@ import signal
 import subprocess
 import time
 import threading
+import re as _re
+import urllib.request
+import urllib.parse
 
 PORT = {port}
 
@@ -139,6 +144,91 @@ def kill_emulator():
     return {{"status": "killed", "message": f"Emulator stopped (pids: {{pids}})"}}
 
 
+def get_now_playing():
+    """Detect the currently playing music track in EmulationStation.
+
+    ES opens all music files at startup but only actively reads one.
+    We compare fd read positions with a short delay — the fd whose position
+    changes is the track currently being played.
+    """
+    try:
+        result = subprocess.run(["pidof", "emulationstation"],
+                                capture_output=True, text=True)
+        pid = result.stdout.strip()
+        if not pid:
+            return {{"playing": False, "track": None}}
+
+        fd_dir = f"/proc/{{pid}}/fd"
+        music_fds = {{}}  # fdnum -> target path
+        for fdname in os.listdir(fd_dir):
+            try:
+                target = os.readlink(os.path.join(fd_dir, fdname))
+            except OSError:
+                continue
+            if "/music/" in target:
+                music_fds[fdname] = target
+
+        if not music_fds:
+            return {{"playing": False, "track": None}}
+
+        # Read positions (first snapshot)
+        def read_positions():
+            positions = {{}}
+            for fdnum in music_fds:
+                try:
+                    with open(f"/proc/{{pid}}/fdinfo/{{fdnum}}", "r") as fi:
+                        for line in fi:
+                            if line.startswith("pos:"):
+                                positions[fdnum] = int(line.split()[1])
+                                break
+                except OSError:
+                    pass
+            return positions
+
+        pos1 = read_positions()
+        time.sleep(1)
+        pos2 = read_positions()
+
+        # The fd whose position changed is the active track
+        for fdnum in pos1:
+            if fdnum in pos2 and pos2[fdnum] != pos1[fdnum]:
+                track_path = music_fds[fdnum]
+                # Extract just the filename without extension
+                filename = os.path.basename(track_path)
+                name = os.path.splitext(filename)[0]
+                return {{"playing": True, "track": name, "file": filename}}
+
+        return {{"playing": False, "track": None}}
+    except Exception as e:
+        return {{"playing": False, "track": None, "error": str(e)}}
+
+
+def search_cover_art(query):
+    """Search album cover art on downloads.khinsider.com."""
+    try:
+        q = urllib.parse.quote(query)
+        url = "https://downloads.khinsider.com/search?search=" + q
+        req = urllib.request.Request(url, headers={{"User-Agent": "Mozilla/5.0"}})
+        resp = urllib.request.urlopen(req, timeout=10)
+        html = resp.read().decode("utf-8", errors="replace")
+        # Extract (cover_img, album_name) pairs from search results
+        rows = _re.findall(
+            r'<td class="albumIcon">.*?<img src="([^"]+)".*?</td>.*?<td>.*?<a[^>]*>([^<]+)</a>',
+            html, _re.DOTALL
+        )
+        if not rows:
+            return {{"found": False, "cover": None}}
+        # Best match: album name contains query (case-insensitive)
+        ql = query.lower()
+        for img, name in rows:
+            if ql in name.lower():
+                return {{"found": True, "cover": img.replace("/thumbs_small/", "/"), "album": name}}
+        # Fallback: first result
+        return {{"found": True, "cover": rows[0][0].replace("/thumbs_small/", "/"), "album": rows[0][1]}}
+    except Exception as e:
+        return {{"found": False, "cover": None, "error": str(e)}}
+
+
 MINI_UI = """<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -189,6 +279,20 @@ class ActionHandler(http.server.BaseHTTPRequestHandler):
         elif self.path == "/api/status":
             pids = find_emulator_pids()
             self._json_response({{"running": len(pids) > 0, "pids": pids}})
+        elif self.path == "/api/now-playing":
+            result = get_now_playing()
+            self._json_response(result)
+        elif self.path.startswith("/api/cover-art"):
+            # Parse query parameter: /api/cover-art?q=Game+Name
+            query = ""
+            if "?" in self.path:
+                params = urllib.parse.parse_qs(self.path.split("?", 1)[1])
+                query = params.get("q", [""])[0]
+            if query:
+                result = search_cover_art(query)
+            else:
+                result = {{"found": False, "cover": None, "error": "Missing ?q= parameter"}}
+            self._json_response(result)
         elif self.path == "/":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -423,6 +527,158 @@ def patch_index_html():
       clearInterval(polling);polling=null;
     }
   }).observe(document.body,{childList:true,subtree:true});
+
+  /* --- Now Playing: replace ghost icon zone with current music --- */
+  var npPoll=null,npLastTrack="",npContainer=null,npFailCount=0,npMaxFails=10;
+  var npStyle=document.createElement("style");
+  npStyle.textContent=
+    ".wma-now-playing{display:flex;flex-direction:column;align-items:center;justify-content:center;"+
+    "gap:12px;padding:24px;text-align:center;height:100%;min-height:180px;animation:wma-np-fadein .5s ease}"+
+    ".wma-now-playing .wma-np-icon{font-size:3.5rem;color:#00d4ff;animation:wma-np-pulse 2s ease-in-out infinite}"+
+    ".wma-now-playing .wma-np-label{font-size:.85rem;text-transform:uppercase;letter-spacing:2px;opacity:.5}"+
+    ".wma-now-playing .wma-np-track{font-size:1.1rem;font-weight:600;line-height:1.4;max-width:400px;word-break:break-word}"+
+    ".wma-now-playing .wma-np-system{font-size:.85rem;opacity:.6;font-style:italic}"+
+    ".wma-now-playing .wma-np-cover{width:140px;height:140px;border-radius:8px;object-fit:cover;"+
+    "box-shadow:0 4px 16px rgba(0,0,0,.4);opacity:0;transition:opacity .5s ease}"+
+    ".wma-now-playing .wma-np-cover.loaded{opacity:1}"+
+    "@keyframes wma-np-pulse{0%,100%{opacity:1}50%{opacity:.4}}"+
+    "@keyframes wma-np-fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}";
+  document.head.appendChild(npStyle);
+
+  var npLoadingMsgs={fr:"Chargement de la musique\\u2026",en:"Loading music\\u2026"};
+
+  function showLoading(overlay){
+    var lang=getLang();
+    var div=document.createElement("div");
+    div.className="wma-now-playing";
+    div.innerHTML=
+      "<div class=\\"wma-np-icon\\" style=\\"animation:wma-np-pulse 1s ease-in-out infinite\\">\\u266b</div>"+
+      "<div class=\\"wma-np-label\\">"+(npLoadingMsgs[lang]||npLoadingMsgs.en)+"</div>";
+    overlay.innerHTML="";
+    overlay.appendChild(div);
+    overlay.classList.remove("server-off","sleep-mode");
+    overlay.style.background="none";
+    npContainer=div;
+  }
+
+  /* Replace ghost immediately when it appears */
+  new MutationObserver(function(mutations,obs){
+    var ghost=document.querySelector(".sleep-mode .mdi-ghost-off-outline");
+    if(ghost&&!npContainer){
+      var overlay=ghost.closest(".overlayMessage");
+      if(overlay) showLoading(overlay);
+    }
+  }).observe(document.body,{childList:true,subtree:true});
+
+  function parseTrack(name){
+    /* Extract [SYSTEM] and track name from format: "\\u266a [SNES] Game - Track" */
+    var r={system:"",title:name||"",game:""};
+    if(!name)return r;
+    /* Remove leading music note */
+    var s=name.replace(/^\\u266a\\s*/,"");
+    var m=s.match(/^\\[([^\\]]+)\\]\\s*(.*)$/);
+    if(m){r.system=m[1];r.title=m[2]}
+    else{r.title=s}
+    /* Extract game name (before first " - ") */
+    var dash=r.title.indexOf(" - ");
+    r.game=dash>0?r.title.substring(0,dash):r.title;
+    return r;
+  }
+
+  function updateNowPlaying(){
+    /* Only act when we are on the home page and no game is running */
+    var ghost=document.querySelector(".sleep-mode .mdi-ghost-off-outline");
+    var overlay=null;
+    if(ghost){
+      overlay=ghost.closest(".overlayMessage");
+    }else if(npContainer&&npContainer.parentNode){
+      /* Already replaced: use the parent overlay */
+      overlay=npContainer.parentNode.closest(".overlayMessage")||npContainer.parentNode;
+    }
+    if(!overlay)return;
+
+    fetch(API+"/api/now-playing").then(function(r){return r.json()}).then(function(d){
+      if(!d.playing){
+        npFailCount++;
+        /* After repeated failures, show "no music" message */
+        if(npFailCount>=npMaxFails){
+          var lang=getLang();
+          var noMusicMsg={fr:"Aucune musique d\\u00e9tect\\u00e9e",en:"No music detected"};
+          var div=document.createElement("div");
+          div.className="wma-now-playing";
+          div.innerHTML=
+            "<div class=\\"wma-np-icon\\" style=\\"animation:none;opacity:.3\\">\\u266b</div>"+
+            "<div class=\\"wma-np-track\\" style=\\"opacity:.4\\">"+(noMusicMsg[lang]||noMusicMsg.en)+"</div>";
+          if(npContainer&&npContainer.parentNode){
+            npContainer.parentNode.replaceChild(div,npContainer);
+          }else if(overlay){
+            overlay.innerHTML="";
+            overlay.appendChild(div);
+            overlay.classList.remove("server-off","sleep-mode");
+            overlay.style.background="none";
+          }
+          npContainer=div;npLastTrack="";
+        }
+        return;
+      }
+      npFailCount=0;
+      if(d.track===npLastTrack&&npContainer)return;
+      npLastTrack=d.track||"";
+      var info=parseTrack(d.track);
+      var div=document.createElement("div");
+      div.className="wma-now-playing";
+      div.innerHTML=
+        "<img class=\\"wma-np-cover\\" id=\\"wma-np-cover-img\\" alt=\\"\\" />"+
+        "<div class=\\"wma-np-icon\\">\\u266b</div>"+
+        "<div class=\\"wma-np-label\\">Now Playing</div>"+
+        "<div class=\\"wma-np-track\\">"+escHtml(info.title)+"</div>"+
+        (info.system?"<div class=\\"wma-np-system\\">"+escHtml(info.system)+"</div>":"")+
+        "";
+      /* Replace the overlay content */
+      if(npContainer&&npContainer.parentNode){
+        npContainer.parentNode.replaceChild(div,npContainer);
+      }else{
+        overlay.innerHTML="";
+        overlay.appendChild(div);
+      }
+      overlay.classList.remove("server-off","sleep-mode");
+      overlay.style.background="none";
+      npContainer=div;
+      /* Lazy-load cover art */
+      if(info.game){
+        fetchCover(info.game);
+      }
+    }).catch(function(){});
+  }
+
+  function fetchCover(gameName){
+    var q=encodeURIComponent(gameName);
+    fetch(API+"/api/cover-art?q="+q).then(function(r){return r.json()}).then(function(d){
+      if(d.found&&d.cover){
+        var img=document.getElementById("wma-np-cover-img");
+        if(img){
+          img.onload=function(){img.classList.add("loaded")};
+          img.onerror=function(){img.style.display="none"};
+          img.src=d.cover;
+        }
+      }
+    }).catch(function(){});
+  }
+
+  function createGhost(){
+    var el=document.createElement("i");
+    el.className="q-icon notranslate mdi mdi-ghost-off-outline";
+    el.setAttribute("aria-hidden","true");el.setAttribute("role","img");
+    return el;
+  }
+  function escHtml(s){
+    var d=document.createElement("div");d.textContent=s;return d.innerHTML;
+  }
+
+  /* Poll every 10s for now-playing (the API call takes ~1s due to fd diff) */
+  npPoll=setInterval(updateNowPlaying,10000);
+  /* Initial check after 3s (let the page load) */
+  setTimeout(updateNowPlaying,3000);
 })();
 </script>'''
 
