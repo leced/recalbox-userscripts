@@ -1,1 +1,4 @@
 .DS_Store
+.grind-scraper/
+__pycache__/
+*.pyc
