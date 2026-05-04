@@ -17,9 +17,11 @@ A Recalbox userscript that extends the native web manager (port 20666) with cust
 
 ### Quitter l'emulateur
 
-A "Kill Emulator" button injected into the web manager's gear menu (actions menu), right before the "Stop EmulationStation" button. Sends SIGTERM to the running emulator, waits 3 seconds, then SIGKILL if still alive.
+A "Kill Emulator" button injected into the web manager's gear menu (actions menu), as the last item after "Stop EmulationStation". Sends SIGTERM to the running emulator, waits 3 seconds, then SIGKILL if still alive.
 
 Useful when a game is frozen or you want to exit without physical access to the controller.
+
+![Kill Emulator button in the web manager gear menu](webmanager-addon-kill-emulator.png)
 
 ## How it works
 

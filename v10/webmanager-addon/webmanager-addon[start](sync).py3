@@ -282,6 +282,7 @@ def patch_frontend():
         content = f.read()
 
     es_stop_marker = ',i($,{onClick:u[6]||(u[6]=g=>o(h)())'
+    es_stop_end = 'label:o(t)("home.system.es.stop"),"label-position":"left",square:""},null,8,["color","label"])'
     addon_start = '/*WMA*/'
     addon_end = '/*~WMA*/'
 
@@ -298,7 +299,7 @@ def patch_frontend():
             content = re.sub(re.escape(addon_start) + '.*?' + re.escape(addon_end), '', content)
             print("[webmanager-addon] Removed previous frontend patch")
 
-    # Inject a "Kill Emulator" button before the ES stop button in the actions menu.
+    # Inject a "Kill Emulator" button as the last item in the actions menu (after ES stop).
     # The button calls our micro API server to gracefully/force kill the running emulator.
     # Uses Quasar Notify (via Vue app $q.notify) instead of alert() for feedback.
     # i18n: detects locale at click time to show the right message.
@@ -334,13 +335,17 @@ def patch_frontend():
         '"label-position":"left",square:""},null,8,["color"])'
     )
 
-    count = content.count(es_stop_marker)
+    count = content.count(es_stop_end)
 
     if count == 0:
         print("[webmanager-addon] Could not find ES stop button pattern in MainLayout JS")
         return False
 
-    new_content = content.replace(es_stop_marker, addon_start + kill_button_code + addon_end + es_stop_marker)
+    # Inject our button after the ES stop button (last position in the menu)
+    new_content = content.replace(
+        es_stop_end,
+        es_stop_end + addon_start + kill_button_code + addon_end
+    )
 
     with open(layout_path, "w", encoding="utf-8") as f:
         f.write(new_content)
