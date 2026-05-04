@@ -10,7 +10,7 @@ A Recalbox userscript that adds convenient shell aliases, available in every SSH
 | **Author** | LeCED |
 | **Contact** | noxious@caramail.fr |
 | **License** | Free to use and modify |
-| **Recalbox** | 10.0 |
+| **Recalbox** | 10.0.5 |
 | **Tested on** | Raspberry Pi 5 |
 
 ## Aliases
@@ -22,6 +22,20 @@ A Recalbox userscript that adds convenient shell aliases, available in every SSH
 ## Installation
 
 Deploy `shell-aliases[start](sync).py3` to your Recalbox — see [How to install a userscript](../../INSTALL-SCRIPTS.md).
+
+## Adding your own aliases
+
+Edit the `ALIASES` list in the script:
+
+```python
+ALIASES = [
+    ('ll', 'ls -la'),
+    ('cls', 'clear'),
+    ('roms', 'ls /recalbox/share/roms'),
+]
+```
+
+Each entry is a pair `('alias_name', 'command')`. Reboot or restart EmulationStation to apply.
 
 ## How it works
 

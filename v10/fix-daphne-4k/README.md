@@ -10,7 +10,7 @@ A Recalbox userscript that fixes Hypseus (Daphne/Singe laserdisc emulator) rende
 | **Author** | LeCED |
 | **Contact** | noxious@caramail.fr |
 | **License** | Free to use and modify |
-| **Recalbox** | 10.0 |
+| **Recalbox** | 10.0.5 |
 | **Hypseus** | 10.0.2 |
 
 ## 🎯 What this script fixes
@@ -50,9 +50,9 @@ While `daphne.smooth=1` is correctly mapped to the Hypseus `-linear_scale` argum
 
 ## 🖥️ Compatibility
 
-> **This script was written and tested exclusively on Raspberry Pi 5 running Recalbox 10.0 with a 4K TV.**
+> **This script was written and tested exclusively on Raspberry Pi 5 running Recalbox 10.0.5 with a 4K TV.**
 >
-> The author does not know whether it is compatible with other hardware (Pi 4, Pi 3, x86, Odroid, etc.) or other Recalbox versions. The patched code patterns are specific to Recalbox 10.0 and may differ on other releases. **Use on other systems at your own risk.**
+> The author does not know whether it is compatible with other hardware (Pi 4, Pi 3, x86, Odroid, etc.) or other Recalbox versions. The patched code patterns are specific to Recalbox 10.0.5 and may differ on other releases. **Use on other systems at your own risk.**
 
 ## 📦 Installation
 

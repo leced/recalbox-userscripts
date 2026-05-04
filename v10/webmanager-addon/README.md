@@ -10,7 +10,7 @@ A Recalbox userscript that extends the native web manager (port 20666) with cust
 | **Author** | LeCED |
 | **Contact** | noxious@caramail.fr |
 | **License** | Free to use and modify |
-| **Recalbox** | 10.0 |
+| **Recalbox** | 10.0.5 |
 | **Tested on** | Raspberry Pi 5 |
 
 ## Current Add-ons
