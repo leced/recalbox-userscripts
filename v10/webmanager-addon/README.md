@@ -19,7 +19,7 @@ A Recalbox userscript that extends the native web manager (port 20666) with cust
 
 Useful when a game is frozen or you want to exit without physical access to the controller.
 
-![Kill Emulator button in the web manager gear menu](webmanager-addon-kill-emulator.png)
+![Kill Emulator button in the web manager gear menu](../../media/webmanager-addon-kill-emulator.png)
 
 ## Installation
 
