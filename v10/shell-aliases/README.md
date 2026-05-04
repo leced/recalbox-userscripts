@@ -19,7 +19,11 @@ A Recalbox userscript that adds convenient shell aliases, available in every SSH
 |---|---|---|
 | `ll` | `ls -la` | Long listing with hidden files |
 | `cls` | `clear` | Clear the terminal screen |
-| `roms` | `cd /recalbox/share/roms` | Go to the ROMs directory |
+| `share` | `cd /recalbox/share && pwd && ls` | Go to the share directory |
+| `roms` | `cd /recalbox/share/roms && pwd && ls` | Go to the ROMs directory |
+| `bios` | `cd /recalbox/share/bios && pwd && ls` | Go to the BIOS directory |
+| `music` | `cd /recalbox/share/music && pwd && ls` | Go to the music directory |
+| `cheats` | `cd /recalbox/share/cheats && pwd && ls` | Go to the cheats directory |
 
 ## Installation
 

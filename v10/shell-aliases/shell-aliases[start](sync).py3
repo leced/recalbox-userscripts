@@ -50,7 +50,11 @@ ALIASES_PATH = "/etc/profile.d/aliases.sh"
 ALIASES = [
     ('ll', 'ls -la'),
     ('cls', 'clear'),
-    ('roms', 'cd /recalbox/share/roms'),
+    ('share', 'cd /recalbox/share && pwd && ls'),
+    ('roms', 'cd /recalbox/share/roms && pwd && ls'),
+    ('bios', 'cd /recalbox/share/bios && pwd && ls'),
+    ('music', 'cd /recalbox/share/music && pwd && ls'),
+    ('cheats', 'cd /recalbox/share/cheats && pwd && ls'),
 ]
 
 def alias_line(name, cmd):
