@@ -55,6 +55,8 @@ ALIASES = [
     ('bios', 'cd /recalbox/share/bios && pwd && ls'),
     ('music', 'cd /recalbox/share/music && pwd && ls'),
     ('cheats', 'cd /recalbox/share/cheats && pwd && ls'),
+    ('themes', 'cd /recalbox/share/themes && pwd && ls'),
+    ('userscripts', 'cd /recalbox/share/userscripts && pwd && ls'),
 ]
 
 def alias_line(name, cmd):

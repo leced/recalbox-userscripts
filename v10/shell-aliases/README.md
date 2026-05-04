@@ -24,6 +24,8 @@ A Recalbox userscript that adds convenient shell aliases, available in every SSH
 | `bios` | `cd /recalbox/share/bios && pwd && ls` | Go to the BIOS directory |
 | `music` | `cd /recalbox/share/music && pwd && ls` | Go to the music directory |
 | `cheats` | `cd /recalbox/share/cheats && pwd && ls` | Go to the cheats directory |
+| `themes` | `cd /recalbox/share/themes && pwd && ls` | Go to the themes directory |
+| `userscripts` | `cd /recalbox/share/userscripts && pwd && ls` | Go to the userscripts directory |
 
 ## Installation
 
