@@ -752,6 +752,8 @@ def patch_index_html():
       npLastTrack=d.track||"";
       npLastFilepath=d.filepath||"";
       npLastBytePos=d.byte_pos||0;
+      /* Stop old audio when track changes */
+      if(npAudioEl&&!npAudioEl.paused){npAudioEl.pause();npAudioEl.src="";npAudioPlaying=false}
       var info=parseTrack(d.track);
       var div=document.createElement("div");
       div.className="wma-now-playing";
@@ -801,39 +803,35 @@ def patch_index_html():
     np.insertBefore(img,np.firstChild);
   }
   function fetchCover(gameName,trackSnapshot){
-    var names=[];
-    var n=gameName.replace(/^(.+),\s*(the)\s*$/i,"The $1");
-    names.push(n);
-    var reduced=n.replace(/\s*\([^)]*\)\s*/g,'').trim();
-    if(reduced&&reduced!==n) names.push(reduced);
-    if(reduced===n){
-      var p=n.split(' ');
-      while(p.length>2){p.pop();names.push(p.join(' '))}
-    }
-    var nIdx=0,sIdx=0,sufs=[" (video game)"," (game)",""];
-    function titleMatch(dt,gn){
+    var norm=gameName.replace(/^(.+),\s*(the)\s*$/i,"The $1");
+    var gn=norm.toLowerCase().replace(/[^a-z0-9]/g,"");
+    var searchUrl="https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch="
+      +encodeURIComponent(norm)+"&format=json&origin=*&srlimit=5";
+    var idx=0;
+    function titleMatch(dt){
       var min=Math.min(gn.length,dt.length);
       var pref=0;while(pref<min&&gn[pref]===dt[pref])pref++;
       var suff=0;while(suff<min&&gn[gn.length-1-suff]===dt[dt.length-1-suff])suff++;
-      return (pref+suff)>=gn.length*0.7;
+      return (pref+suff)>=Math.min(gn.length,dt.length)*0.7;
     }
-    function next(){
-      if(nIdx>=names.length)return;
-      var norm=names[nIdx];
-      var gn=norm.toLowerCase().replace(/[^a-z0-9]/g,"");
-      var slug=encodeURIComponent(norm+sufs[sIdx++]);
-      if(sIdx>=sufs.length){sIdx=0;nIdx++}
-      fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"+slug)
+    function tryResult(results){
+      if(!results||idx>=results.length)return;
+      var title=results[idx++].title;
+      fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"+encodeURIComponent(title))
       .then(function(r){if(r.ok)return r.json();throw r.status})
       .then(function(d){
         if(npLastTrack!==trackSnapshot)return;
         var dt=d.title.toLowerCase().replace(/[^a-z0-9]/g,"");
-        if(d.thumbnail&&d.thumbnail.source&&d.type!="disambiguation"&&titleMatch(dt,gn))
+        if(d.thumbnail&&d.thumbnail.source&&d.type!="disambiguation"&&titleMatch(dt))
           setCover(d.thumbnail.source);
-        else next();
-      }).catch(function(){next()});
+        else tryResult(results);
+      }).catch(function(){tryResult(results)});
     }
-    next();
+    fetch(searchUrl).then(function(r){return r.json()})
+    .then(function(data){
+      var res=data.query&&data.query.search||[];
+      tryResult(res);
+    }).catch(function(){});
   }
 
   function createGhost(){
