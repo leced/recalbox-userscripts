@@ -11,7 +11,7 @@ Tested on: Raspberry Pi 5
 
 Author: LeCED
 Contact: noxious@caramail.fr
-Version: 2.2
+Version: 2.3
 
 ===============================================================================
 COMPATIBILITY
@@ -28,6 +28,17 @@ server still works via the mini UI. Use on other systems at your own risk.
 ===============================================================================
 CHANGELOG
 ===============================================================================
+
+v2.3 - Auto-play, multi-language Wikipedia, page image fallback
+    - Auto-play toggle button (mdi-autorenew icon) for continuous playback
+      through track changes
+    - Multi-language Wikipedia search: uses browser locale (fr/en) to
+      choose domain; falls back to en.wikipedia.org if fr returns nothing
+    - System name included in search queries on both languages
+    - Page image fallback (fetchPageImage): search page images for
+      cover/logo when summary thumbnail absent; filters SVG/PDF files
+    - Cover search URL logged to browser console for debugging
+    - Improved Wikipedia article title matching with length ratio check
 
 v2.2 - Audio streaming, progressive cover search, CORS fixes
     - New endpoint: /api/audio/stream (HTTP Range, threaded server)
@@ -631,7 +642,7 @@ def patch_index_html():
 
   /* --- Now Playing: replace ghost icon zone with current music --- */
   var npPoll=null,npLastTrack="",npLastFilepath="",npLastBytePos=0,npContainer=null,npFailCount=0,npMaxFails=10;
-  var npAudioEl=null,npAudioPlaying=false,npAudioTrack="";
+  var npAudioEl=null,npAudioPlaying=false,npAudioTrack="",npContinuous=false;
   var npStyle=document.createElement("style");
   npStyle.textContent=
     ".wma-now-playing{display:flex;flex-direction:column;align-items:center;justify-content:center;"+
@@ -643,11 +654,14 @@ def patch_index_html():
     ".wma-now-playing .wma-np-cover{display:block;height:180px;width:auto;max-width:100%;border-radius:8px;object-fit:contain;"+
     "box-shadow:0 4px 16px rgba(0,0,0,.4);opacity:0;transition:opacity .5s ease}"+
     ".wma-now-playing .wma-np-cover.loaded{opacity:1}"+
-    ".wma-now-playing .wma-np-playbtn{background:rgba(0,212,255,.25);border:2px solid #00d4ff;"+
+    ".wma-np-buttons{display:flex;gap:12px;align-items:center;justify-content:center;margin-top:4px}"+
+    ".wma-now-playing .wma-np-playbtn,.wma-now-playing .wma-np-autobtn{background:rgba(0,212,255,.25);border:2px solid #00d4ff;"+
     "color:#fff;font-size:1.2rem;width:40px;height:40px;border-radius:50%;"+
     "cursor:pointer;display:flex;align-items:center;justify-content:center;"+
-    "transition:all .2s ease;margin-top:4px}"+
-    ".wma-now-playing .wma-np-playbtn:hover{background:rgba(0,212,255,.5);border-color:#0af}"+
+    "transition:all .2s ease}"+
+    ".wma-now-playing .wma-np-playbtn:hover,.wma-now-playing .wma-np-autobtn:hover{background:rgba(0,212,255,.5);border-color:#0af}"+
+    ".wma-now-playing .wma-np-autobtn{opacity:.35;font-size:1rem}"+
+    ".wma-now-playing .wma-np-autobtn.active{opacity:1}"+
     ".overlayMessage.wma-has-player{padding:0;display:flex;align-items:center;justify-content:center}"+
     "@keyframes wma-np-pulse{0%,100%{opacity:1}50%{opacity:.4}}"+
     "@keyframes wma-np-fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}";
@@ -752,7 +766,8 @@ def patch_index_html():
       npLastTrack=d.track||"";
       npLastFilepath=d.filepath||"";
       npLastBytePos=d.byte_pos||0;
-      /* Stop old audio when track changes */
+      var wasAuto=npContinuous&&npAudioEl&&!npAudioEl.paused;
+      /* Stop old audio when track changes (unless auto-play, re-start below) */
       if(npAudioEl&&!npAudioEl.paused){npAudioEl.pause();npAudioEl.src="";npAudioPlaying=false}
       var info=parseTrack(d.track);
       var div=document.createElement("div");
@@ -762,7 +777,10 @@ def patch_index_html():
         "<div class=\\"wma-np-label\\">"+(npNowPlayingMsgs[getLang()]||npNowPlayingMsgs.en)+"</div>"+
         "<div class=\\"wma-np-track\\">"+escHtml(info.title)+"</div>"+
         (info.system?"<div class=\\"wma-np-system\\">"+escHtml(info.system)+"</div>":"")+
-        "<button class=\\"wma-np-playbtn\\">\\u25b6</button>"+
+        "<div class=\\"wma-np-buttons\\">"+
+        "<button class=\\"wma-np-playbtn\\" title=\\"Play/Stop\\">\\u25b6</button>"+
+        "<button class=\\"wma-np-autobtn\\" title=\\"Auto-play\\"><i class=\\"q-icon notranslate mdi mdi-autorenew\\" aria-hidden=\\"true\\" role=\\"img\\"></i></button>"+
+        "</div>"+
         "";
       /* Replace the overlay content */
       if(npContainer&&npContainer.parentNode){
@@ -781,6 +799,17 @@ def patch_index_html():
       /* Attach play button handler */
       var playBtn=npContainer.querySelector(".wma-np-playbtn");
       if(playBtn)playBtn.onclick=function(){npTogglePlay(this)};
+      /* Attach auto-play toggle handler */
+      var autoBtn=npContainer.querySelector(".wma-np-autobtn");
+      if(autoBtn){
+        if(npContinuous)autoBtn.classList.add("active");
+        autoBtn.onclick=function(){
+          npContinuous=!npContinuous;
+          this.classList.toggle("active");
+        };
+      }
+      /* Auto-play new track if continuous mode was active */
+      if(wasAuto&&playBtn)npTogglePlay(playBtn);
     }).catch(function(){});
   }
 
@@ -805,33 +834,77 @@ def patch_index_html():
   function fetchCover(gameName,system,trackSnapshot){
     var norm=gameName.replace(/^(.+),\s*(the)\s*$/i,"The $1");
     var gn=norm.toLowerCase().replace(/[^a-z0-9]/g,"");
-    var searchUrl="https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch="
-      +encodeURIComponent(norm+" "+system+" video game")+"&format=json&origin=*&srlimit=5";
+    var lang=getLang();
+    var domain=lang==="fr"?"fr":"en";
     var idx=0;
+    function makeUrl(d){
+      var suffix=d==="en"?" "+system+" video game":" "+system;
+      return "https://"+d+".wikipedia.org/w/api.php?action=query&list=search&srsearch="
+        +encodeURIComponent(norm+suffix)+"&format=json&origin=*&srlimit=5";
+    }
     function titleMatch(dt){
       var min=Math.min(gn.length,dt.length);
       var pref=0;while(pref<min&&gn[pref]===dt[pref])pref++;
       var suff=0;while(suff<min&&gn[gn.length-1-suff]===dt[dt.length-1-suff])suff++;
       return (pref+suff)>=Math.min(gn.length,dt.length)*0.7;
     }
+    function searchDomain(d){
+      var url=makeUrl(d);
+      console.log("cover search:",url);
+      fetch(url).then(function(r){return r.json()})
+      .then(function(data){
+        var res=data.query&&data.query.search||[];
+        tryResult(res);
+      }).catch(function(){});
+    }
+    function fetchPageImage(pageTitle,results){
+      var listUrl="https://"+domain+".wikipedia.org/w/api.php?action=query&titles="
+        +encodeURIComponent(pageTitle)+"&prop=images&format=json&origin=*";
+      fetch(listUrl).then(function(r){return r.json()})
+      .then(function(d){
+        var images=[];
+        for(var pid in d.query&&d.query.pages||{}){
+          if(d.query.pages[pid].images)images=d.query.pages[pid].images;
+        }
+        if(!images.length){tryResult(results);return;}
+        var c=null;
+        for(var i=0;i<images.length;i++){
+          var n=images[i].title.toLowerCase();
+          if((!c||n.match(/(logo|cover|pochette|flyer|jaquette)/))&&!n.match(/\.(svg|pdf)$/))
+            c=images[i];
+        }
+        if(!c)c=images[0];
+        var imgUrl="https://"+domain+".wikipedia.org/w/api.php?action=query&titles="
+          +encodeURIComponent(c.title)+"&prop=imageinfo&iiprop=url&format=json&origin=*";
+        fetch(imgUrl).then(function(r){return r.json()})
+        .then(function(id){
+          for(var pid in id.query&&id.query.pages||{}){
+            var info=id.query.pages[pid].imageinfo;
+            if(info&&info[0]&&info[0].url){setCover(info[0].url);return}
+          }
+          tryResult(results);
+        }).catch(function(){tryResult(results)});
+      }).catch(function(){tryResult(results)});
+    }
     function tryResult(results){
-      if(!results||idx>=results.length)return;
+      if(!results||idx>=results.length){
+        if(domain!=="en"){domain="en";idx=0;searchDomain(domain)}
+        return;
+      }
       var title=results[idx++].title;
-      fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"+encodeURIComponent(title))
+      fetch("https://"+domain+".wikipedia.org/api/rest_v1/page/summary/"+encodeURIComponent(title))
       .then(function(r){if(r.ok)return r.json();throw r.status})
       .then(function(d){
         if(npLastTrack!==trackSnapshot)return;
         var dt=d.title.toLowerCase().replace(/[^a-z0-9]/g,"");
         if(d.thumbnail&&d.thumbnail.source&&d.type!="disambiguation"&&titleMatch(dt))
           setCover(d.thumbnail.source);
+        else if(titleMatch(dt)&&d.type!="disambiguation")
+          fetchPageImage(title,results);
         else tryResult(results);
       }).catch(function(){tryResult(results)});
     }
-    fetch(searchUrl).then(function(r){return r.json()})
-    .then(function(data){
-      var res=data.query&&data.query.search||[];
-      tryResult(res);
-    }).catch(function(){});
+    searchDomain(domain);
   }
 
   function createGhost(){

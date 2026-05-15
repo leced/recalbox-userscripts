@@ -6,7 +6,7 @@ A Recalbox userscript that extends the native web manager (port 20666) with cust
 
 | | |
 |---|---|
-| **Version** | 2.2 |
+| **Version** | 2.3 |
 | **Author** | LeCED |
 | **Contact** | noxious@caramail.fr |
 | **License** | Free to use and modify |
@@ -19,7 +19,8 @@ A Recalbox userscript that extends the native web manager (port 20666) with cust
 |---|---|
 | [Kill Emulator](#-kill-emulator) | Remotely stop a frozen or running emulator from the web manager gear menu |
 | [Now Playing Music](#-now-playing-music) | Display the current background music track with album cover art on the home page |
-| [Audio Streaming](#-audio-streaming) | Stream the current music track directly in the browser with a play/stop button |
+| [Audio Streaming](#-audio-streaming) | Stream the current music track directly in the browser with play/stop and auto-play buttons |
+| [Auto-play](#-audio-streaming) | Continuous playback across track changes with a toggle button |
 
 ---
 
@@ -38,7 +39,9 @@ The button sends a graceful SIGTERM, waits 3 seconds, then force-kills with SIGK
 When no game is running, the "Game" panel on the home page displays the currently playing background music track, including:
 
 - Track title and system/platform (parsed from the filename)
-- Album cover art fetched from the [Wikipedia REST API](https://en.wikipedia.org/api/rest_v1/)
+- Album cover art fetched from the [Wikipedia REST API](https://en.wikipedia.org/api/rest_v1/) — multi-language (fr/en) with automatic locale detection
+- System name included in search queries for better precision
+- Page image fallback: searches page images for logo/cover when summary has no thumbnail
 - Automatic updates when the track changes (polled every 10 seconds)
 - Loading state while detecting music, and a "no music detected" fallback after repeated failures
 - Supports English and French
@@ -53,7 +56,10 @@ An internet connection is required for cover art; without it, only the track nam
 
 ### 🎧 Audio Streaming
 
-The now-playing display includes a circular **play/stop button** (▶/⏹) below the track info. Clicking play streams the current music file directly from the Recalbox to the browser via a dedicated HTTP endpoint — no external services involved.
+The now-playing display includes two buttons below the track info:
+
+- **Play/Stop** (▶/⏹) — toggles streaming of the current music file directly from the Recalbox to the browser via a dedicated HTTP endpoint.
+- **Auto-play** (🔄) — toggle for continuous playback. When active (highlighted), music automatically continues playing through track changes without requiring manual re-activation.
 
 ---
 
@@ -122,6 +128,15 @@ Reboot or restart EmulationStation. The script will:
 
 
 ## 📝 Changelog
+
+### v2.3 — Auto-play, multi-language Wikipedia, page image fallback
+- Auto-play toggle button (🔄 `mdi-autorenew`) for continuous playback through track changes
+- Multi-language Wikipedia search: uses browser locale (fr/en) to choose domain
+- System name included in search queries on both languages for better precision
+- Page image fallback (`fetchPageImage`): when summary has no thumbnail, search page images for logo/cover
+- Cover search URL logged to browser console for debugging
+- Updated Wikipedia article matching with length ratio check
+- Replaced 🔄 unicode with `mdi-autorenew` Material Design Icon
 
 ### v2.2 — Audio streaming, progressive cover search, CORS fixes
 - Play/stop button on now-playing display to stream music in the browser
