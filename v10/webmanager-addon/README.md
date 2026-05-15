@@ -18,9 +18,7 @@ A Recalbox userscript that extends the native web manager (port 20666) with cust
 | Feature | Description |
 |---|---|
 | [Kill Emulator](#-kill-emulator) | Remotely stop a frozen or running emulator from the web manager gear menu |
-| [Now Playing Music](#-now-playing-music) | Display the current background music track with album cover art on the home page |
-| [Audio Streaming](#-audio-streaming) | Stream the current music track directly in the browser with play/stop and auto-play buttons |
-| [Auto-play](#-audio-streaming) | Continuous playback across track changes with a toggle button |
+| [Now Playing Music](#-now-playing-music) | Display the current background music track with album cover art, audio streaming (play/stop), and auto-play across track changes |
 
 ---
 
@@ -39,7 +37,7 @@ The button sends a graceful SIGTERM, waits 3 seconds, then force-kills with SIGK
 When no game is running, the "Game" panel on the home page displays the currently playing background music track, including:
 
 - Track title and system/platform (parsed from the filename)
-- Album cover art fetched from the [Wikipedia REST API](https://en.wikipedia.org/api/rest_v1/) — multi-language (fr/en) with automatic locale detection
+- Album cover art fetched from Wikipedia — multi-language (fr/en) with automatic locale detection
 - System name included in search queries for better precision
 - Page image fallback: searches page images for logo/cover when summary has no thumbnail
 - Automatic updates when the track changes (polled every 10 seconds)

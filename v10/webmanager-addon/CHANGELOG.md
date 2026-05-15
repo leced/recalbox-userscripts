@@ -7,7 +7,6 @@
 - Page image fallback (`fetchPageImage`): when summary has no thumbnail, search page images for logo/cover
 - Cover search URL logged to browser console for debugging
 - Updated Wikipedia article matching with length ratio check
-- Replaced 🔄 unicode with `mdi-autorenew` Material Design Icon
 
 ## v2.2 — Audio streaming, progressive cover search, CORS fixes
 - Play/stop button on now-playing display to stream music in the browser
