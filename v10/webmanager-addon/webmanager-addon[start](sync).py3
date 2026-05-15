@@ -776,7 +776,7 @@ def patch_index_html():
       npContainer=div;
       /* Lazy-load cover art */
       if(info.game){
-        fetchCover(info.game,npLastTrack);
+        fetchCover(info.game,info.system,npLastTrack);
       }
       /* Attach play button handler */
       var playBtn=npContainer.querySelector(".wma-np-playbtn");
@@ -802,11 +802,11 @@ def patch_index_html():
     img.src=url;
     np.insertBefore(img,np.firstChild);
   }
-  function fetchCover(gameName,trackSnapshot){
+  function fetchCover(gameName,system,trackSnapshot){
     var norm=gameName.replace(/^(.+),\s*(the)\s*$/i,"The $1");
     var gn=norm.toLowerCase().replace(/[^a-z0-9]/g,"");
     var searchUrl="https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch="
-      +encodeURIComponent(norm)+"&format=json&origin=*&srlimit=5";
+      +encodeURIComponent(norm+" "+system+" video game")+"&format=json&origin=*&srlimit=5";
     var idx=0;
     function titleMatch(dt){
       var min=Math.min(gn.length,dt.length);
