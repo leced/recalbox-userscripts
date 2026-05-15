@@ -48,7 +48,6 @@ Runs on port {port}, exposes:
   GET /api/kill-emulator  — graceful stop then force kill current emulator
   GET /api/status         — check if an emulator is running
   GET /api/now-playing    — detect currently playing music track
-  GET /api/cover-art?q=   — search album cover art from khinsider
   GET /                   — mini web UI
 """
 
@@ -59,9 +58,6 @@ import signal
 import subprocess
 import time
 import threading
-import re as _re
-import urllib.request
-import urllib.parse
 
 PORT = {port}
 
@@ -203,32 +199,6 @@ def get_now_playing():
         return {{"playing": False, "track": None, "error": str(e)}}
 
 
-def search_cover_art(query):
-    """Search album cover art on downloads.khinsider.com."""
-    try:
-        q = urllib.parse.quote(query)
-        url = "https://downloads.khinsider.com/search?search=" + q
-        req = urllib.request.Request(url, headers={{"User-Agent": "Mozilla/5.0"}})
-        resp = urllib.request.urlopen(req, timeout=10)
-        html = resp.read().decode("utf-8", errors="replace")
-        # Extract (cover_img, album_name) pairs from search results
-        rows = _re.findall(
-            r'<td class="albumIcon">.*?<img src="([^"]+)".*?</td>.*?<td>.*?<a[^>]*>([^<]+)</a>',
-            html, _re.DOTALL
-        )
-        if not rows:
-            return {{"found": False, "cover": None}}
-        # Best match: album name contains query (case-insensitive)
-        ql = query.lower()
-        for img, name in rows:
-            if ql in name.lower():
-                return {{"found": True, "cover": img.replace("/thumbs_small/", "/"), "album": name}}
-        # Fallback: first result
-        return {{"found": True, "cover": rows[0][0].replace("/thumbs_small/", "/"), "album": rows[0][1]}}
-    except Exception as e:
-        return {{"found": False, "cover": None, "error": str(e)}}
-
-
 MINI_UI = """<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -281,17 +251,6 @@ class ActionHandler(http.server.BaseHTTPRequestHandler):
             self._json_response({{"running": len(pids) > 0, "pids": pids}})
         elif self.path == "/api/now-playing":
             result = get_now_playing()
-            self._json_response(result)
-        elif self.path.startswith("/api/cover-art"):
-            # Parse query parameter: /api/cover-art?q=Game+Name
-            query = ""
-            if "?" in self.path:
-                params = urllib.parse.parse_qs(self.path.split("?", 1)[1])
-                query = params.get("q", [""])[0]
-            if query:
-                result = search_cover_art(query)
-            else:
-                result = {{"found": False, "cover": None, "error": "Missing ?q= parameter"}}
             self._json_response(result)
         elif self.path == "/":
             self.send_response(200)
@@ -536,16 +495,18 @@ def patch_index_html():
     "gap:12px;padding:24px;text-align:center;height:100%;min-height:180px;animation:wma-np-fadein .5s ease}"+
     ".wma-now-playing .wma-np-icon{font-size:3.5rem;color:#00d4ff;animation:wma-np-pulse 2s ease-in-out infinite}"+
     ".wma-now-playing .wma-np-label{font-size:.85rem;text-transform:uppercase;letter-spacing:2px;opacity:.5}"+
-    ".wma-now-playing .wma-np-track{font-size:1.1rem;font-weight:600;line-height:1.4;max-width:400px;word-break:break-word}"+
+    ".wma-now-playing .wma-np-track{font-size:1.5rem;font-weight:600;line-height:1.3;max-width:400px;word-break:break-word}"+
     ".wma-now-playing .wma-np-system{font-size:.85rem;opacity:.6;font-style:italic}"+
-    ".wma-now-playing .wma-np-cover{width:140px;height:140px;border-radius:8px;object-fit:cover;"+
+    ".wma-now-playing .wma-np-cover{height:180px;width:auto;max-width:100%;border-radius:8px;object-fit:contain;"+
     "box-shadow:0 4px 16px rgba(0,0,0,.4);opacity:0;transition:opacity .5s ease}"+
     ".wma-now-playing .wma-np-cover.loaded{opacity:1}"+
+    ".overlayMessage.wma-has-player{padding:0;display:flex;align-items:center;justify-content:center}"+
     "@keyframes wma-np-pulse{0%,100%{opacity:1}50%{opacity:.4}}"+
     "@keyframes wma-np-fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}";
   document.head.appendChild(npStyle);
 
   var npLoadingMsgs={fr:"Chargement de la musique\\u2026",en:"Loading music\\u2026"};
+  var npNowPlayingMsgs={fr:"En cours de lecture",en:"Now Playing"};
 
   function showLoading(overlay){
     var lang=getLang();
@@ -558,15 +519,27 @@ def patch_index_html():
     overlay.appendChild(div);
     overlay.classList.remove("server-off","sleep-mode");
     overlay.style.background="none";
+    overlay.classList.add("wma-has-player");
     npContainer=div;
   }
 
   /* Replace ghost immediately when it appears */
   new MutationObserver(function(mutations,obs){
     var ghost=document.querySelector(".sleep-mode .mdi-ghost-off-outline");
-    if(ghost&&!npContainer){
+    if(ghost&&(!npContainer||!npContainer.isConnected)){
+      npContainer=null;
+      npLastTrack="";
       var overlay=ghost.closest(".overlayMessage");
       if(overlay) showLoading(overlay);
+    }
+    if(!ghost){
+      /* Not in sleep mode — check if npContainer got detached (wake from sleep) */
+      var anyGhost=document.querySelector(".mdi-ghost-off-outline");
+      if(anyGhost&&npContainer&&!npContainer.isConnected){
+        npContainer=null;npLastTrack="";
+        var overlay=anyGhost.closest(".overlayMessage");
+        if(overlay) showLoading(overlay);
+      }
     }
   }).observe(document.body,{childList:true,subtree:true});
 
@@ -594,6 +567,11 @@ def patch_index_html():
     }else if(npContainer&&npContainer.parentNode){
       /* Already replaced: use the parent overlay */
       overlay=npContainer.parentNode.closest(".overlayMessage")||npContainer.parentNode;
+    }else{
+      /* npContainer is stale (detached after sleep wake) — reset and find home overlay */
+      npContainer=null;npLastTrack="";
+      var anyGhost=document.querySelector(".mdi-ghost-off-outline");
+      if(anyGhost) overlay=anyGhost.closest(".overlayMessage");
     }
     if(!overlay)return;
 
@@ -630,7 +608,7 @@ def patch_index_html():
       div.innerHTML=
         "<img class=\\"wma-np-cover\\" id=\\"wma-np-cover-img\\" alt=\\"\\" />"+
         "<div class=\\"wma-np-icon\\">\\u266b</div>"+
-        "<div class=\\"wma-np-label\\">Now Playing</div>"+
+        "<div class=\\"wma-np-label\\">"+(npNowPlayingMsgs[getLang()]||npNowPlayingMsgs.en)+"</div>"+
         "<div class=\\"wma-np-track\\">"+escHtml(info.title)+"</div>"+
         (info.system?"<div class=\\"wma-np-system\\">"+escHtml(info.system)+"</div>":"")+
         "";
@@ -646,23 +624,45 @@ def patch_index_html():
       npContainer=div;
       /* Lazy-load cover art */
       if(info.game){
-        fetchCover(info.game);
+        fetchCover(info.game,npLastTrack);
       }
     }).catch(function(){});
   }
 
-  function fetchCover(gameName){
-    var q=encodeURIComponent(gameName);
-    fetch(API+"/api/cover-art?q="+q).then(function(r){return r.json()}).then(function(d){
-      if(d.found&&d.cover){
-        var img=document.getElementById("wma-np-cover-img");
-        if(img){
-          img.onload=function(){img.classList.add("loaded")};
-          img.onerror=function(){img.style.display="none"};
-          img.src=d.cover;
-        }
-      }
-    }).catch(function(){});
+  function setCover(url){
+    var img=document.getElementById("wma-np-cover-img");
+    if(img){
+      img.onload=function(){
+        img.classList.add("loaded");
+        var ic=document.querySelector(".wma-now-playing .wma-np-icon");
+        if(ic)ic.style.display="none";
+      };
+      img.onerror=function(){img.style.display="none"};
+      img.src=url;
+    }
+  }
+  function fetchCover(gameName,trackSnapshot){
+    var norm=gameName.replace(/^(.+),\s*(the)\s*$/i,"The $1");
+    var gn=norm.toLowerCase();
+    var slugs=[encodeURIComponent(norm+" (video game)"),
+               encodeURIComponent(norm+" (game)"),
+               encodeURIComponent(norm)];
+    var idx=0;
+    function trySlug(){
+      if(idx>=slugs.length)return;
+      var slug=slugs[idx++];
+      fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"+slug)
+      .then(function(r){if(r.ok)return r.json();throw r.status})
+      .then(function(d){
+        if(npLastTrack!==trackSnapshot)return;
+        if(d.thumbnail&&d.thumbnail.source
+           &&d.type!="disambiguation"
+           &&d.title.toLowerCase().indexOf(gn)>=0)
+          setCover(d.thumbnail.source);
+        else trySlug();
+      }).catch(function(){trySlug()});
+    }
+    trySlug();
   }
 
   function createGhost(){

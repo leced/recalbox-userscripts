@@ -37,14 +37,14 @@ The button sends a graceful SIGTERM, waits 3 seconds, then force-kills with SIGK
 When no game is running, the "Game" panel on the home page displays the currently playing background music track, including:
 
 - Track title and system/platform (parsed from the filename)
-- Album cover art fetched from [downloads.khinsider.com](https://downloads.khinsider.com)
+- Album cover art fetched from the [Wikipedia REST API](https://en.wikipedia.org/api/rest_v1/) (client-side, bypasses Cloudflare)
 - Automatic updates when the track changes (polled every 10 seconds)
 - Loading state while detecting music, and a "no music detected" fallback after repeated failures
 - Supports English and French
 
 The music detection works by comparing EmulationStation's file descriptor read positions — the fd whose position changes between two snapshots is the currently playing track.
 
-The cover art search extracts the game name from the track filename and queries khinsider for a matching album. An internet connection is required for cover art; without it, only the track name is displayed.
+The cover art search extracts the game name from the track filename and queries the Wikipedia REST API for a matching article thumbnail (trying slug variants `"X (video game)"`, `"X (game)"`, then `"X"`). An internet connection is required for cover art; without it, only the track name is displayed.
 
 > **Note on filenames:** The script supports filenames following the `♪ [SYSTEM] Game Name - Track Title.mp3` convention (system and cover art are extracted automatically). Standard filenames like `My Song.mp3` also work — the full filename is displayed as the track title.
 
@@ -83,7 +83,6 @@ The script does three things at every EmulationStation startup:
 | `GET /api/kill-emulator` | Graceful stop then force kill current emulator |
 | `GET /api/status` | Check if an emulator is running (returns PIDs) |
 | `GET /api/now-playing` | Detect currently playing music track (~1s response time) |
-| `GET /api/cover-art?q=<game>` | Search album cover art from khinsider |
 | `GET /` | Mini standalone web UI |
 
 The mini UI is also accessible directly at `http://recalbox.local:8081/`.
@@ -127,10 +126,10 @@ webmanager-addon/
 
 ### v2.0 — Now Playing Music
 - Detect and display currently playing background music track
-- Album cover art search from downloads.khinsider.com
+- Cover art fetched from Wikipedia REST API (client-side, bypasses Cloudflare)
 - Loading state and "no music detected" fallback
 - English/French i18n support
-- New API endpoints: `/api/now-playing` and `/api/cover-art`
+- New API endpoint: `/api/now-playing`
 
 ### v1.0 — Initial release
 - Micro HTTP API server with kill-emulator and status endpoints
