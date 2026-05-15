@@ -11,7 +11,7 @@ Tested on: Raspberry Pi 5
 
 Author: LeCED
 Contact: noxious@caramail.fr
-Version: 2.1
+Version: 2.2
 
 ===============================================================================
 COMPATIBILITY
@@ -60,12 +60,27 @@ At every EmulationStation startup, the script:
 4. Patches index.html with an observer script handling:
    - Button state polling (enabled/disabled based on emulator status)
    - Now-playing music display with Wikipedia cover art
+   - Progressive cover art search (name reduction + fuzzy title match)
+   - Audio streaming with play/stop button (direct HTTP stream)
    - Sleep/wake DOM recovery
    - English/French i18n
 
 ===============================================================================
 CHANGELOG
 ===============================================================================
+
+v2.2 - Audio streaming, progressive cover search, CORS fixes
+    - New endpoint: /api/audio/stream (HTTP Range, threaded server)
+    - Play/stop button in now-playing display; stream from byte 0
+    - ThreadingMixIn server so streaming doesn't block other endpoints
+    - CORS: OPTIONS preflight, Access-Control-Allow-Origin on all responses
+    - crossOrigin="anonymous" on audio element to avoid ORB blocking
+    - Progressive cover name reduction: strip parentheticals, then last word
+    - Fuzzy titleMatch (prefix + suffix >= 70% of search term)
+    - Faster initial poll (1.5s first check, then every 10s)
+    - Cover image created dynamically — no empty space when no cover found
+    - Cyan accent play button colors for better visibility
+    - Removed max-width on track title for better wrapping
 
 v2.1 - Cover art rework, sleep/wake fixes, UI improvements
     - Replaced khinsider (server-side) with Wikipedia REST API (client-side)
@@ -127,10 +142,11 @@ API_SERVER_CODE = r'''#!/usr/bin/env python3
 """
 webmanager-addon-server — Micro HTTP API for custom Recalbox actions
 Runs on port {port}, exposes:
-  GET /api/kill-emulator  — graceful stop then force kill current emulator
-  GET /api/status         — check if an emulator is running
-  GET /api/now-playing    — detect currently playing music track
-  GET /                   — mini web UI
+   GET /api/kill-emulator  — graceful stop then force kill current emulator
+   GET /api/status         — check if an emulator is running
+   GET /api/now-playing    — detect currently playing music track (returns filepath + byte_pos)
+   GET /api/audio/stream   — stream current track (HTTP Range, CORS, threaded). Params: ?path= (encoded filepath), ?offset= (byte start, default 0)
+   GET /                   — mini web UI
 """
 
 import http.server
@@ -140,6 +156,9 @@ import signal
 import subprocess
 import time
 import threading
+import re
+from socketserver import ThreadingMixIn
+from urllib.parse import unquote
 
 PORT = {port}
 
@@ -274,7 +293,8 @@ def get_now_playing():
                 # Extract just the filename without extension
                 filename = os.path.basename(track_path)
                 name = os.path.splitext(filename)[0]
-                return {{"playing": True, "track": name, "file": filename}}
+                byte_pos = pos2[fdnum]
+                return {{"playing": True, "track": name, "file": filename, "filepath": track_path, "byte_pos": byte_pos}}
 
         return {{"playing": False, "track": None}}
     except Exception as e:
@@ -334,6 +354,74 @@ class ActionHandler(http.server.BaseHTTPRequestHandler):
         elif self.path == "/api/now-playing":
             result = get_now_playing()
             self._json_response(result)
+        elif self.path.startswith("/api/audio/stream"):
+            qs = {{}}
+            if '?' in self.path:
+                for part in self.path.split('?', 1)[1].split('&'):
+                    if '=' in part:
+                        k, v = part.split('=', 1)
+                        qs[k] = v
+            filepath = unquote(qs.get('path', ''))
+            if not filepath or not filepath.startswith('/recalbox/share/music/'):
+                # Fallback: detect via get_now_playing
+                np_fb = get_now_playing()
+                if np_fb.get("playing") and np_fb.get("filepath"):
+                    filepath = np_fb["filepath"]
+                else:
+                    self.send_response(204)
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    return
+            if not os.path.exists(filepath):
+                self.send_response(204)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                return
+            file_size = os.path.getsize(filepath)
+            ext = os.path.splitext(filepath)[1].lower()
+            content_type = {{
+                '.mp3': 'audio/mpeg',
+                '.ogg': 'audio/ogg',
+                '.wav': 'audio/wav',
+                '.flac': 'audio/flac',
+                '.aac': 'audio/aac',
+                '.m4a': 'audio/mp4',
+                '.opus': 'audio/ogg',
+            }}.get(ext, 'application/octet-stream')
+            range_header = self.headers.get('Range', '')
+            start = 0
+            end = file_size - 1
+            if range_header:
+                m = re.match(r'bytes=(\d+)-(\d*)', range_header)
+                if m:
+                    start = int(m.group(1))
+                    if m.group(2):
+                        end = int(m.group(2))
+            if start > 0:
+                self.send_response(206)
+                self.send_header('Content-Range', 'bytes {{}}-{{}}/{{}}'.format(start, end, file_size))
+            else:
+                self.send_response(200)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(end - start + 1))
+            self.send_header('Accept-Ranges', 'bytes')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            try:
+                with open(filepath, 'rb') as f:
+                    f.seek(start)
+                    remaining = end - start + 1
+                    while remaining > 0:
+                        chunk_size = min(65536, remaining)
+                        chunk = f.read(chunk_size)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+                        remaining -= len(chunk)
+            except Exception:
+                pass
         elif self.path == "/":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -341,6 +429,14 @@ class ActionHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(MINI_UI.encode())
         else:
             self.send_error(404)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Range')
+        self.send_header('Access-Control-Max-Age', '86400')
+        self.end_headers()
 
     def _json_response(self, data):
         self.send_response(200)
@@ -353,8 +449,12 @@ class ActionHandler(http.server.BaseHTTPRequestHandler):
         pass  # silent
 
 
+class ThreadedServer(ThreadingMixIn, http.server.HTTPServer):
+    pass
+
+
 def run_server():
-    server = http.server.HTTPServer(("0.0.0.0", PORT), ActionHandler)
+    server = ThreadedServer(("0.0.0.0", PORT), ActionHandler)
     print(f"recalbox-actions-server listening on port {{PORT}}")
     server.serve_forever()
 
@@ -570,18 +670,24 @@ def patch_index_html():
   }).observe(document.body,{childList:true,subtree:true});
 
   /* --- Now Playing: replace ghost icon zone with current music --- */
-  var npPoll=null,npLastTrack="",npContainer=null,npFailCount=0,npMaxFails=10;
+  var npPoll=null,npLastTrack="",npLastFilepath="",npLastBytePos=0,npContainer=null,npFailCount=0,npMaxFails=10;
+  var npAudioEl=null,npAudioPlaying=false,npAudioTrack="";
   var npStyle=document.createElement("style");
   npStyle.textContent=
     ".wma-now-playing{display:flex;flex-direction:column;align-items:center;justify-content:center;"+
     "gap:12px;padding:24px;text-align:center;height:100%;min-height:180px;animation:wma-np-fadein .5s ease}"+
     ".wma-now-playing .wma-np-icon{font-size:3.5rem;color:#00d4ff;animation:wma-np-pulse 2s ease-in-out infinite}"+
     ".wma-now-playing .wma-np-label{font-size:.85rem;text-transform:uppercase;letter-spacing:2px;opacity:.5}"+
-    ".wma-now-playing .wma-np-track{font-size:1.5rem;font-weight:600;line-height:1.3;max-width:400px;word-break:break-word}"+
-    ".wma-now-playing .wma-np-system{font-size:.85rem;opacity:.6;font-style:italic}"+
-    ".wma-now-playing .wma-np-cover{height:180px;width:auto;max-width:100%;border-radius:8px;object-fit:contain;"+
+".wma-now-playing .wma-np-track{font-size:1.5rem;font-weight:600;line-height:1.3;word-break:break-word}"+
+".wma-now-playing .wma-np-system{font-size:.85rem;opacity:.6;font-style:italic}"+
+    ".wma-now-playing .wma-np-cover{display:block;height:180px;width:auto;max-width:100%;border-radius:8px;object-fit:contain;"+
     "box-shadow:0 4px 16px rgba(0,0,0,.4);opacity:0;transition:opacity .5s ease}"+
     ".wma-now-playing .wma-np-cover.loaded{opacity:1}"+
+    ".wma-now-playing .wma-np-playbtn{background:rgba(0,212,255,.25);border:2px solid #00d4ff;"+
+    "color:#fff;font-size:1.2rem;width:40px;height:40px;border-radius:50%;"+
+    "cursor:pointer;display:flex;align-items:center;justify-content:center;"+
+    "transition:all .2s ease;margin-top:4px}"+
+    ".wma-now-playing .wma-np-playbtn:hover{background:rgba(0,212,255,.5);border-color:#0af}"+
     ".overlayMessage.wma-has-player{padding:0;display:flex;align-items:center;justify-content:center}"+
     "@keyframes wma-np-pulse{0%,100%{opacity:1}50%{opacity:.4}}"+
     "@keyframes wma-np-fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}";
@@ -684,15 +790,17 @@ def patch_index_html():
       npFailCount=0;
       if(d.track===npLastTrack&&npContainer)return;
       npLastTrack=d.track||"";
+      npLastFilepath=d.filepath||"";
+      npLastBytePos=d.byte_pos||0;
       var info=parseTrack(d.track);
       var div=document.createElement("div");
       div.className="wma-now-playing";
       div.innerHTML=
-        "<img class=\\"wma-np-cover\\" id=\\"wma-np-cover-img\\" alt=\\"\\" />"+
         "<div class=\\"wma-np-icon\\">\\u266b</div>"+
         "<div class=\\"wma-np-label\\">"+(npNowPlayingMsgs[getLang()]||npNowPlayingMsgs.en)+"</div>"+
         "<div class=\\"wma-np-track\\">"+escHtml(info.title)+"</div>"+
         (info.system?"<div class=\\"wma-np-system\\">"+escHtml(info.system)+"</div>":"")+
+        "<button class=\\"wma-np-playbtn\\">\\u25b6</button>"+
         "";
       /* Replace the overlay content */
       if(npContainer&&npContainer.parentNode){
@@ -708,43 +816,64 @@ def patch_index_html():
       if(info.game){
         fetchCover(info.game,npLastTrack);
       }
+      /* Attach play button handler */
+      var playBtn=npContainer.querySelector(".wma-np-playbtn");
+      if(playBtn)playBtn.onclick=function(){npTogglePlay(this)};
     }).catch(function(){});
   }
 
   function setCover(url){
-    var img=document.getElementById("wma-np-cover-img");
-    if(img){
-      img.onload=function(){
-        img.classList.add("loaded");
-        var ic=document.querySelector(".wma-now-playing .wma-np-icon");
-        if(ic)ic.style.display="none";
-      };
-      img.onerror=function(){img.style.display="none"};
-      img.src=url;
-    }
+    var np=document.querySelector(".wma-now-playing");
+    if(!np)return;
+    var old=document.getElementById("wma-np-cover-img");
+    if(old)old.remove();
+    var img=document.createElement("img");
+    img.className="wma-np-cover";
+    img.id="wma-np-cover-img";
+    img.alt="";
+    img.onload=function(){
+      img.classList.add("loaded");
+      var ic=np.querySelector(".wma-np-icon");
+      if(ic)ic.style.display="none";
+    };
+    img.onerror=function(){img.remove()};
+    img.src=url;
+    np.insertBefore(img,np.firstChild);
   }
   function fetchCover(gameName,trackSnapshot){
-    var norm=gameName.replace(/^(.+),\s*(the)\s*$/i,"The $1");
-    var gn=norm.toLowerCase();
-    var slugs=[encodeURIComponent(norm+" (video game)"),
-               encodeURIComponent(norm+" (game)"),
-               encodeURIComponent(norm)];
-    var idx=0;
-    function trySlug(){
-      if(idx>=slugs.length)return;
-      var slug=slugs[idx++];
+    var names=[];
+    var n=gameName.replace(/^(.+),\s*(the)\s*$/i,"The $1");
+    names.push(n);
+    var reduced=n.replace(/\s*\([^)]*\)\s*/g,'').trim();
+    if(reduced&&reduced!==n) names.push(reduced);
+    if(reduced===n){
+      var p=n.split(' ');
+      if(p.length>1){p.pop();names.push(p.join(' '))}
+    }
+    var nIdx=0,sIdx=0,sufs=[" (video game)"," (game)",""];
+    function titleMatch(dt,gn){
+      var min=Math.min(gn.length,dt.length);
+      var pref=0;while(pref<min&&gn[pref]===dt[pref])pref++;
+      var suff=0;while(suff<min&&gn[gn.length-1-suff]===dt[dt.length-1-suff])suff++;
+      return (pref+suff)>=gn.length*0.7;
+    }
+    function next(){
+      if(nIdx>=names.length)return;
+      var norm=names[nIdx];
+      var gn=norm.toLowerCase().replace(/[^a-z0-9]/g,"");
+      var slug=encodeURIComponent(norm+sufs[sIdx++]);
+      if(sIdx>=sufs.length){sIdx=0;nIdx++}
       fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"+slug)
       .then(function(r){if(r.ok)return r.json();throw r.status})
       .then(function(d){
         if(npLastTrack!==trackSnapshot)return;
-        if(d.thumbnail&&d.thumbnail.source
-           &&d.type!="disambiguation"
-           &&d.title.toLowerCase().indexOf(gn)>=0)
+        var dt=d.title.toLowerCase().replace(/[^a-z0-9]/g,"");
+        if(d.thumbnail&&d.thumbnail.source&&d.type!="disambiguation"&&titleMatch(dt,gn))
           setCover(d.thumbnail.source);
-        else trySlug();
-      }).catch(function(){trySlug()});
+        else next();
+      }).catch(function(){next()});
     }
-    trySlug();
+    next();
   }
 
   function createGhost(){
@@ -756,11 +885,45 @@ def patch_index_html():
   function escHtml(s){
     var d=document.createElement("div");d.textContent=s;return d.innerHTML;
   }
+  function npTogglePlay(btn){
+    if(npAudioEl&&!npAudioEl.paused){
+      npAudioEl.pause();
+      npAudioEl.src="";
+      npAudioPlaying=false;
+      if(btn)btn.textContent="\\u25b6";
+      return;
+    }
+    if(!npLastFilepath){
+      console.warn("[webmanager-addon] No track filepath cached");
+      return;
+    }
+    npAudioTrack=npLastTrack;
+    var streamUrl=API+"/api/audio/stream?path="+encodeURIComponent(npLastFilepath)+"&t="+Date.now();
+    if(!npAudioEl){
+      npAudioEl=document.createElement("audio");
+      npAudioEl.crossOrigin="anonymous";
+      npAudioEl.style.display="none";
+      document.body.appendChild(npAudioEl);
+      npAudioEl.onended=function(){
+        npAudioPlaying=false;
+        npAudioEl.src="";
+        var b=document.querySelector(".wma-np-playbtn");
+        if(b)b.textContent="\\u25b6";
+      };
+    }
+    npAudioEl.src=streamUrl;
+    npAudioEl.play().then(function(){
+      npAudioPlaying=true;
+      if(btn)btn.textContent="\\u23f9";
+    }).catch(function(e){
+      console.warn("[webmanager-addon] Audio play failed:",e);
+    });
+  }
 
-  /* Poll every 10s for now-playing (the API call takes ~1s due to fd diff) */
+  /* Poll every 10s for now-playing */
   npPoll=setInterval(updateNowPlaying,10000);
-  /* Initial check after 3s (let the page load) */
-  setTimeout(updateNowPlaying,3000);
+  /* Initial check after 1.5s */
+  setTimeout(updateNowPlaying,1500);
 })();
 </script>'''
 
