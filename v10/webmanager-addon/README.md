@@ -1,8 +1,8 @@
-# webmanager-addon — Custom Actions for the Recalbox Web Manager
+# 🛠️ webmanager-addon — Custom Actions for the Recalbox Web Manager
 
 A Recalbox userscript that extends the native web manager (port 20666) with custom action buttons and a "Now Playing" music display, powered by a micro HTTP API server.
 
-## Overview
+## 📋 Overview
 
 | | |
 |---|---|
@@ -13,16 +13,16 @@ A Recalbox userscript that extends the native web manager (port 20666) with cust
 | **Recalbox** | 10.0.5 |
 | **Tested on** | Raspberry Pi 5 |
 
-## Features
+## 🎯 Features
 
 | Feature | Description |
 |---|---|
-| [Kill Emulator](#kill-emulator) | Remotely stop a frozen or running emulator from the web manager gear menu |
-| [Now Playing Music](#now-playing-music) | Display the current background music track with album cover art on the home page |
+| [Kill Emulator](#-kill-emulator) | Remotely stop a frozen or running emulator from the web manager gear menu |
+| [Now Playing Music](#-now-playing-music) | Display the current background music track with album cover art on the home page |
 
 ---
 
-## Kill Emulator
+### 🎮 Kill Emulator
 
 Adds a "Kill Emulator" button to the gear menu in the web manager. Useful when a game is frozen or you want to exit without physical access to the controller.
 
@@ -32,7 +32,7 @@ The button sends a graceful SIGTERM, waits 3 seconds, then force-kills with SIGK
 
 ---
 
-## Now Playing Music
+### 🎵 Now Playing Music
 
 When no game is running, the "Game" panel on the home page displays the currently playing background music track, including:
 
@@ -46,29 +46,19 @@ The music detection works by comparing EmulationStation's file descriptor read p
 
 The cover art search extracts the game name from the track filename and queries the Wikipedia REST API for a matching article thumbnail (trying slug variants `"X (video game)"`, `"X (game)"`, then `"X"`). An internet connection is required for cover art; without it, only the track name is displayed.
 
-> **Note on filenames:** The script supports filenames following the `♪ [SYSTEM] Game Name - Track Title.mp3` convention (system and cover art are extracted automatically). Standard filenames like `My Song.mp3` also work — the full filename is displayed as the track title.
+> **📝 Note on filenames:** The script supports filenames following the `♪ [SYSTEM] Game Name - Track Title.mp3` convention (system and cover art are extracted automatically). Standard filenames like `My Song.mp3` also work — the full filename is displayed as the track title.
 
 ---
 
-## Installation
+## ⚙️ How it works
 
-Deploy `webmanager-addon[start](sync).py3` to your Recalbox — see [How to install a userscript](../../INSTALL-SCRIPTS.md).
+The script leverages the Recalbox [userscripts system](https://wiki.recalbox.com/en/advanced-usage/scripts-on-emulationstation-events). The filename convention `webmanager-addon[start](sync).py3` means:
 
-Reboot or restart EmulationStation. No modification to `recalbox.conf` is required.
+- `[start]` — executes when EmulationStation starts
+- `(sync)` — runs synchronously (blocking, before ES is fully loaded)
+- `.py3` — interpreted as Python 3
 
-## Uninstallation
-
-Deploy `uninstall-webmanager-addon[start](sync).py3` to your Recalbox — see [How to install a userscript](../../INSTALL-SCRIPTS.md).
-
-Reboot or restart EmulationStation. The script will:
-- Stop and remove the daemon (init.d script + PID file)
-- Remove the generated server script and the webmanager-addon userscript
-- Restore the original web manager frontend files from squashfs
-- Delete itself
-
-## How it works
-
-The script does three things at every EmulationStation startup:
+At each ES startup, the script does three things:
 
 1. **Installs a micro HTTP API server** (Python, port 8081) that exposes custom action endpoints. The server runs as a daemon via an init.d script (`S30webmanager-addon`) so it survives ES restarts.
 
@@ -91,15 +81,46 @@ The mini UI is also accessible directly at `http://recalbox.local:8081/`.
 
 The server dynamically loads the list of emulator binaries from `configgen.recalboxFiles.recalboxBins` at startup. This means the list is always up to date with the installed Recalbox version, regardless of the hardware platform.
 
-## Compatibility
+## 📦 Installation
 
-> **This script was written and tested exclusively on Raspberry Pi 5 running Recalbox 10.0.**
+1. Copy the script to the Recalbox userscripts directory:
+
+```
+scp "webmanager-addon[start](sync).py3" root@recalbox.local:/recalbox/share/userscripts/
+```
+
+2. That's it. The script runs automatically every time EmulationStation starts.
+
+No modification to `recalbox.conf` is required. See [How to install a userscript](../../INSTALL-SCRIPTS.md) for more details.
+
+## 🗑️ Uninstallation
+
+Deploy `uninstall-webmanager-addon[start](sync).py3` to your Recalbox — see [How to install a userscript](../../INSTALL-SCRIPTS.md).
+
+Reboot or restart EmulationStation. The script will:
+
+- Stop and remove the daemon (init.d script + PID file)
+- Remove the generated server script and the webmanager-addon userscript
+- Restore the original web manager frontend files from squashfs
+- Delete itself
+
+## ⚠️ Warning — Init.d daemon staleness
+
+The API server runs as a daemon via `/etc/init.d/S30webmanager-addon`. If the server starts or stops unexpectedly (e.g. due to system sleep or connectivity loss), the PID file at `/var/run/webmanager-addon.pid` may become stale.
+
+The daemon's `status` command checks only the PID file; a stale PID causes the daemon to appear "not running" even when it is, potentially causing duplicate start attempts or refusal to restart.
+
+**Recommendation:** If the server status seems inconsistent, check `/var/run/webmanager-addon.pid` and remove it if the referenced PID no longer exists.
+
+## 🖥️ Compatibility
+
+> **This script was written and tested exclusively on Raspberry Pi 5 running Recalbox 10.0.5.**
 >
 > It should work on all architectures since the emulator list is loaded dynamically from configgen, but this has not been tested.
 >
 > The frontend patch targets specific patterns in the minified JS bundle. Different Recalbox versions may use different filenames or code patterns. If the patch fails, the script logs a warning and continues — the API server still works via the mini UI.
 
-## File structure
+## 📁 File structure
 
 ### On the host (this repo)
 
@@ -122,7 +143,7 @@ webmanager-addon/
 /recalbox/web/manager-v3/index.html              # Patched (observer script)
 ```
 
-## Changelog
+## 📝 Changelog
 
 ### v2.1 — Cover art rework, sleep/wake fixes, UI improvements
 - Replace khinsider (server-side) with Wikipedia REST API (client-side) — bypasses Cloudflare 403
@@ -135,6 +156,7 @@ webmanager-addon/
 - Pulsing icon hidden when cover loads successfully
 - i18n: localized "Now Playing" label (English/French)
 - Remove unused server imports (`urllib`, `re`)
+- Updated README with daphne-4k style presentation blocks
 
 ### v2.0 — Now Playing Music
 - Detect and display currently playing background music track
@@ -149,3 +171,8 @@ webmanager-addon/
 - Mini standalone web UI on port 8081
 - SIGTERM + 3s grace period + SIGKILL kill sequence
 - Init.d daemon for persistence across ES restarts
+
+## 🙏 Acknowledgements
+
+- [Recalbox](https://www.recalbox.com/) team
+- Wikipedia REST API for cover art thumbnails
