@@ -42,6 +42,8 @@ When no game is running, the "Game" panel on the home page displays the currentl
 - Loading state while detecting music, and a "no music detected" fallback after repeated failures
 - Supports English and French
 
+![Now Playing music display with cover art on the home page](../../media/webmanager-addon-now-playing.png)
+
 The music detection works by comparing EmulationStation's file descriptor read positions — the fd whose position changes between two snapshots is the currently playing track.
 
 The cover art search extracts the game name from the track filename and queries the Wikipedia REST API for a matching article thumbnail (trying slug variants `"X (video game)"`, `"X (game)"`, then `"X"`). An internet connection is required for cover art; without it, only the track name is displayed.
