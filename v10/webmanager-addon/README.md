@@ -6,7 +6,7 @@ A Recalbox userscript that extends the native web manager (port 20666) with cust
 
 | | |
 |---|---|
-| **Version** | 2.0 |
+| **Version** | 2.1 |
 | **Author** | LeCED |
 | **Contact** | noxious@caramail.fr |
 | **License** | Free to use and modify |
@@ -123,6 +123,18 @@ webmanager-addon/
 ```
 
 ## Changelog
+
+### v2.1 — Cover art rework, sleep/wake fixes, UI improvements
+- Replace khinsider (server-side) with Wikipedia REST API (client-side) — bypasses Cloudflare 403
+- Fix slug ordering: `"X (video game)"` first, then `"X (game)"`, bare name last
+- Fix cover art race condition: stale Wikipedia responses discarded when track changes
+- Fix sleep/wake display bug: detect detached DOM nodes, rebuild now-playing from scratch
+- Fix "Loading music…" stuck after wake: recover stale `npContainer` via MutationObserver + poll
+- Bigger track title font (`1.25rem` → `1.5rem`) and cover image (`140px` → `180px`)
+- Centered now-playing overlay layout (flex centering on `.overlayMessage`)
+- Pulsing icon hidden when cover loads successfully
+- i18n: localized "Now Playing" label (English/French)
+- Remove unused server imports (`urllib`, `re`)
 
 ### v2.0 — Now Playing Music
 - Detect and display currently playing background music track
