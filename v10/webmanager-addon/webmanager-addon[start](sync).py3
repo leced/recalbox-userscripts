@@ -642,7 +642,7 @@ def patch_index_html():
 
   /* --- Now Playing: replace ghost icon zone with current music --- */
   var npPoll=null,npLastTrack="",npLastFilepath="",npLastBytePos=0,npContainer=null,npFailCount=0,npMaxFails=10;
-  var npAudioEl=null,npAudioPlaying=false,npAudioTrack="",npContinuous=false;
+  var npAudioEl=null,npAudioPlaying=false,npAudioTrack="",npContinuous=true,npWasPlaying=false;
   var npStyle=document.createElement("style");
   npStyle.textContent=
     ".wma-now-playing{display:flex;flex-direction:column;align-items:center;justify-content:center;"+
@@ -763,10 +763,11 @@ def patch_index_html():
       }
       npFailCount=0;
       if(d.track===npLastTrack&&npContainer)return;
+      var isWakeRecovery=!npLastTrack;
       npLastTrack=d.track||"";
       npLastFilepath=d.filepath||"";
       npLastBytePos=d.byte_pos||0;
-      var wasAuto=npContinuous&&npAudioEl&&!npAudioEl.paused;
+      var wasAuto=npWasPlaying&&(npContinuous||isWakeRecovery);
       /* Stop old audio when track changes (unless auto-play, re-start below) */
       if(npAudioEl&&!npAudioEl.paused){npAudioEl.pause();npAudioEl.src="";npAudioPlaying=false}
       var info=parseTrack(d.track);
@@ -920,7 +921,7 @@ def patch_index_html():
     if(npAudioEl&&!npAudioEl.paused){
       npAudioEl.pause();
       npAudioEl.src="";
-      npAudioPlaying=false;
+      npAudioPlaying=false;npWasPlaying=false;
       if(btn)btn.textContent="\\u25b6";
       return;
     }
@@ -944,7 +945,7 @@ def patch_index_html():
     }
     npAudioEl.src=streamUrl;
     npAudioEl.play().then(function(){
-      npAudioPlaying=true;
+      npAudioPlaying=true;npWasPlaying=true;
       if(btn)btn.textContent="\\u23f9";
     }).catch(function(e){
       console.warn("[webmanager-addon] Audio play failed:",e);
