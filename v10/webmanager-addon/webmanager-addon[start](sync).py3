@@ -26,46 +26,6 @@ If the patch fails, the script logs a warning and continues — the API
 server still works via the mini UI. Use on other systems at your own risk.
 
 ===============================================================================
-WARNING: Init.d daemon staleness
-===============================================================================
-
-The API server runs as a daemon via /etc/init.d/S30webmanager-addon.
-If the server starts or stops unexpectedly (e.g. due to system sleep or
-connectivity loss), the PID file at /var/run/webmanager-addon.pid may
-become stale. The daemon's "status" command checks only the PID file;
-a stale PID causes the daemon to appear "not running" even when it is,
-potentially causing duplicate start attempts or refusal to restart.
-
-===============================================================================
-WARNING: Khinsider cover art blocked by Cloudflare
-===============================================================================
-
-The initial implementation searched for album cover art on
-downloads.khinsider.com from the Python server. This endpoint is behind
-Cloudflare, which blocks any non-browser request and returns HTTP 403.
-Cover art resolution has been moved to the browser side using the
-Wikipedia REST API. An internet connection is still required for cover art;
-without it, only the track title is displayed.
-
-===============================================================================
-HOW IT WORKS
-===============================================================================
-
-At every EmulationStation startup, the script:
-
-1. Writes a micro HTTP API server (Python, port 8081) to disk
-2. Writes an init.d daemon script (S30webmanager-addon) for persistence
-3. Patches MainLayout-*.js to inject a "Kill Emulator" button in the gear
-   menu (two buttons on systems where ES stop is also present)
-4. Patches index.html with an observer script handling:
-   - Button state polling (enabled/disabled based on emulator status)
-   - Now-playing music display with Wikipedia cover art
-   - Progressive cover art search (name reduction + fuzzy title match)
-   - Audio streaming with play/stop button (direct HTTP stream)
-   - Sleep/wake DOM recovery
-   - English/French i18n
-
-===============================================================================
 CHANGELOG
 ===============================================================================
 
@@ -848,7 +808,7 @@ def patch_index_html():
     if(reduced&&reduced!==n) names.push(reduced);
     if(reduced===n){
       var p=n.split(' ');
-      if(p.length>1){p.pop();names.push(p.join(' '))}
+      while(p.length>2){p.pop();names.push(p.join(' '))}
     }
     var nIdx=0,sIdx=0,sufs=[" (video game)"," (game)",""];
     function titleMatch(dt,gn){
