@@ -1,12 +1,59 @@
 #!/usr/bin/env python3
 """
 uninstall-webmanager-addon — Remove webmanager-addon from the Recalbox
-======================================================================
+========================================================================
 One-shot userscript: deploy to /recalbox/share/userscripts/, reboot or
 restart EmulationStation. It will uninstall everything then delete itself.
 
-Deploy:
-  scp "uninstall-webmanager-addon[start](sync).py3" root@recalbox.local:/recalbox/share/userscripts/
+Recalbox version: 10.0
+Tested on: Raspberry Pi 5
+
+Author: LeCED
+Contact: noxious@caramail.fr
+Version: 2.1
+
+===============================================================================
+COMPATIBILITY
+===============================================================================
+
+This script was written and tested exclusively on Raspberry Pi 5 running
+Recalbox 10.0.5. It should work on all architectures but has not been
+tested on other systems. The uninstall restores frontend files from the
+squashfs lower layer; if the lower directory is not available, a reboot
+is required to restore originals. Use on other systems at your own risk.
+
+===============================================================================
+WARNING: One-shot self-deleting script
+===============================================================================
+
+This script deletes itself after successful execution. If you need to
+uninstall again, you must re-deploy the uninstall script first. The script
+stops the daemon, removes all generated files, restores patched frontend
+files from squashfs, then deletes itself. After the script runs, you should
+reboot or restart EmulationStation to ensure everything is clean.
+
+===============================================================================
+WHAT IT REMOVES
+===============================================================================
+
+- /etc/init.d/S30webmanager-addon         — init.d daemon script
+- /recalbox/share/userscripts/webmanager-addon-server.py  — API server
+- /var/run/webmanager-addon.pid           — PID file (if stale)
+- /recalbox/share/userscripts/webmanager-addon*  — other userscript files
+- Patches in /recalbox/web/manager-v3/    — restored from squashfs
+- Its own file                            — self-deletes
+
+===============================================================================
+CHANGELOG
+===============================================================================
+
+v2.1 - Updated with documentation blocks matching main script style
+    - Added COMPATIBILITY, WARNING, and CHANGELOG sections
+    - Reordered uninstall: init script removed before restore
+
+v1.0 - Initial release
+    - Stop daemon, remove files, restore frontend from squashfs
+    - Self-deleting one-shot userscript
 """
 
 import os

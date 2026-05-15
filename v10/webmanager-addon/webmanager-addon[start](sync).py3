@@ -1,20 +1,102 @@
 #!/usr/bin/env python3
 """
-webmanager-addon-action — Custom actions micro-server + web manager patch
-==========================================================================
-Userscript that runs at EmulationStation startup on the Recalbox.
+webmanager-addon — Custom actions micro-server + web manager patch
+===================================================================
+Userscript that extends the Recalbox web manager with a "Kill Emulator"
+button in the gear menu and a "Now Playing" music display on the home
+page, powered by a micro HTTP API server running on port 8081.
 
-It does two things:
-  1. Installs and starts a micro HTTP API server (port 8081) that exposes
-     custom actions like "kill current emulator"
-  2. Patches the Recalbox web manager frontend JS to add a
-     "Quitter l'emulateur" button in the actions menu (gear icon)
+Recalbox version: 10.0
+Tested on: Raspberry Pi 5
 
-The micro-server runs as a daemon via an init.d script so it survives
-EmulationStation restarts. The frontend patch is re-applied at every boot
-since Recalbox updates may overwrite the web manager files.
+Author: LeCED
+Contact: noxious@caramail.fr
+Version: 2.1
 
-Deploy: copy this file to /recalbox/share/userscripts/
+===============================================================================
+COMPATIBILITY
+===============================================================================
+
+This script was written and tested exclusively on Raspberry Pi 5 running
+Recalbox 10.0.5. It should work on all architectures since the emulator
+list is loaded dynamically from configgen, but this has not been tested.
+The frontend patch targets specific patterns in the minified JS bundle;
+different Recalbox versions may use different filenames or code patterns.
+If the patch fails, the script logs a warning and continues — the API
+server still works via the mini UI. Use on other systems at your own risk.
+
+===============================================================================
+WARNING: Init.d daemon staleness
+===============================================================================
+
+The API server runs as a daemon via /etc/init.d/S30webmanager-addon.
+If the server starts or stops unexpectedly (e.g. due to system sleep or
+connectivity loss), the PID file at /var/run/webmanager-addon.pid may
+become stale. The daemon's "status" command checks only the PID file;
+a stale PID causes the daemon to appear "not running" even when it is,
+potentially causing duplicate start attempts or refusal to restart.
+
+===============================================================================
+WARNING: Khinsider cover art blocked by Cloudflare
+===============================================================================
+
+The initial implementation searched for album cover art on
+downloads.khinsider.com from the Python server. This endpoint is behind
+Cloudflare, which blocks any non-browser request and returns HTTP 403.
+Cover art resolution has been moved to the browser side using the
+Wikipedia REST API. An internet connection is still required for cover art;
+without it, only the track title is displayed.
+
+===============================================================================
+HOW IT WORKS
+===============================================================================
+
+At every EmulationStation startup, the script:
+
+1. Writes a micro HTTP API server (Python, port 8081) to disk
+2. Writes an init.d daemon script (S30webmanager-addon) for persistence
+3. Patches MainLayout-*.js to inject a "Kill Emulator" button in the gear
+   menu (two buttons on systems where ES stop is also present)
+4. Patches index.html with an observer script handling:
+   - Button state polling (enabled/disabled based on emulator status)
+   - Now-playing music display with Wikipedia cover art
+   - Sleep/wake DOM recovery
+   - English/French i18n
+
+===============================================================================
+CHANGELOG
+===============================================================================
+
+v2.1 - Cover art rework, sleep/wake fixes, UI improvements
+    - Replaced khinsider (server-side) with Wikipedia REST API (client-side)
+      to bypass Cloudflare 403
+    - Fixed slug ordering: "(video game)" first, then "(game)", bare name last
+    - Fixed cover art race condition: stale Wikipedia responses discarded
+      when track changes mid-flight
+    - Fixed sleep/wake display bug: detect detached DOM nodes, rebuild
+      now-playing from scratch
+    - Fixed "Loading music..." stuck after wake: recover stale npContainer
+      via MutationObserver + poll fallback
+    - Increased track title font (1.25rem -> 1.5rem) and cover image
+      (140px -> 180px)
+    - Centered now-playing overlay layout (flex centering)
+    - Pulsing icon hidden when cover loads successfully
+    - Added i18n for "Now Playing" label (English/French)
+    - Removed unused server imports (urllib, re)
+
+v2.0 - Now Playing Music
+    - Detect and display currently playing background music track
+    - Cover art fetched from Wikipedia REST API (client-side)
+    - Loading state and "no music detected" fallback
+    - English/French i18n support
+    - New API endpoint: /api/now-playing
+
+v1.0 - Initial release
+    - Micro HTTP API server with kill-emulator and status endpoints
+    - Frontend patch injecting "Kill Emulator" button in gear menu
+    - Mini standalone web UI on port 8081
+    - SIGTERM + 3s grace period + SIGKILL kill sequence
+    - Init.d daemon for persistence across ES restarts
 """
 
 import os
