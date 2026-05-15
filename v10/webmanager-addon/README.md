@@ -16,7 +16,7 @@ A Recalbox userscript that extends the native web manager (port 20666) with cust
 ## 🎯 Features
 
 | Feature | Description |
-|---|---|---|
+|---|---|
 | [Kill Emulator](#-kill-emulator) | Remotely stop a frozen or running emulator from the web manager gear menu |
 | [Now Playing Music](#-now-playing-music) | Display the current background music track with album cover art on the home page |
 | [Audio Streaming](#-audio-streaming) | Stream the current music track directly in the browser with a play/stop button |
@@ -38,16 +38,12 @@ The button sends a graceful SIGTERM, waits 3 seconds, then force-kills with SIGK
 When no game is running, the "Game" panel on the home page displays the currently playing background music track, including:
 
 - Track title and system/platform (parsed from the filename)
-- Album cover art fetched from the [Wikipedia REST API](https://en.wikipedia.org/api/rest_v1/) (client-side, bypasses Cloudflare)
+- Album cover art fetched from the [Wikipedia REST API](https://en.wikipedia.org/api/rest_v1/)
 - Automatic updates when the track changes (polled every 10 seconds)
 - Loading state while detecting music, and a "no music detected" fallback after repeated failures
 - Supports English and French
 
 ![Now Playing music display with cover art on the home page](../../media/webmanager-addon-now-playing.png)
-
-The music detection works by comparing EmulationStation's file descriptor read positions — the fd whose position changes between two snapshots is the currently playing track.
-
-The cover art search extracts the game name from the track filename and queries the Wikipedia REST API for a matching article thumbnail. It uses a **progressive name reduction** strategy: tries the full name with suffixes `"(video game)"`, `"(game)"`, then bare; if nothing found, strips parenthetical content or the last word and retries. A **fuzzy title matcher** (prefix + suffix common characters ≥ 70% of the search term) tolerates spacing differences (`RollerCoaster Tycoon`), possessives (`Tony Hawk's Pro Skater`), and prefix additions (`Bad Dudes Vs. DragonNinja`).
 
 An internet connection is required for cover art; without it, only the track name is displayed.
 
@@ -58,12 +54,6 @@ An internet connection is required for cover art; without it, only the track nam
 ### 🎧 Audio Streaming
 
 The now-playing display includes a circular **play/stop button** (▶/⏹) below the track info. Clicking play streams the current music file directly from the Recalbox to the browser via a dedicated HTTP endpoint — no external services involved.
-
-- Streams from byte 0 (no sync complexity)
-- Standard HTTP Range support for timeline seeking
-- `crossorigin="anonymous"` CORS mode to avoid browser blocking
-- Plays the current track regardless of future ES track changes (manual replay to switch)
-- Audio element auto-resets on natural track end
 
 ---
 
@@ -86,7 +76,7 @@ At each ES startup, the script does three things:
 ### API Endpoints
 
 | Endpoint | Description |
-|---|---|---|
+|---|---|
 | `GET /api/kill-emulator` | Graceful stop then force kill current emulator |
 | `GET /api/status` | Check if an emulator is running (returns PIDs) |
 | `GET /api/now-playing` | Detect currently playing music track (~1s response time) |
@@ -122,14 +112,6 @@ Reboot or restart EmulationStation. The script will:
 - Restore the original web manager frontend files from squashfs
 - Delete itself
 
-## ⚠️ Warning — Init.d daemon staleness
-
-The API server runs as a daemon via `/etc/init.d/S30webmanager-addon`. If the server starts or stops unexpectedly (e.g. due to system sleep or connectivity loss), the PID file at `/var/run/webmanager-addon.pid` may become stale.
-
-The daemon's `status` command checks only the PID file; a stale PID causes the daemon to appear "not running" even when it is, potentially causing duplicate start attempts or refusal to restart.
-
-**Recommendation:** If the server status seems inconsistent, check `/var/run/webmanager-addon.pid` and remove it if the referenced PID no longer exists.
-
 ## 🖥️ Compatibility
 
 > **This script was written and tested exclusively on Raspberry Pi 5 running Recalbox 10.0.5.**
@@ -138,45 +120,13 @@ The daemon's `status` command checks only the PID file; a stale PID causes the d
 >
 > The frontend patch targets specific patterns in the minified JS bundle. Different Recalbox versions may use different filenames or code patterns. If the patch fails, the script logs a warning and continues — the API server still works via the mini UI.
 
-## 📁 File structure
-
-### On the host (this repo)
-
-```
-webmanager-addon/
-├── webmanager-addon[start](sync).py3    # The userscript (all-in-one)
-├── uninstall-webmanager-addon[start](sync).py3  # Uninstall userscript (one-shot, self-deleting)
-├── README.md                            # This file
-└── AI.md                                # Session log (gitignored)
-```
-
-### On the Recalbox (created by the script)
-
-```
-/recalbox/share/userscripts/
-├── webmanager-addon[start](sync).py3          # Userscript
-└── webmanager-addon-server.py                 # Micro API server (generated)
-
-/etc/init.d/S30webmanager-addon                # Daemon init script (generated)
-/recalbox/web/manager-v3/assets/MainLayout-*.js  # Patched frontend
-/recalbox/web/manager-v3/index.html              # Patched (observer script)
-```
 
 ## 📝 Changelog
 
 ### v2.2 — Audio streaming, progressive cover search, CORS fixes
-- New endpoint `/api/audio/stream` with HTTP Range support and threaded server
-- Play/stop button (▶/⏹) in now-playing display — stream ES music directly in the browser
-- Server switched to `ThreadingMixIn` so streaming doesn't block other endpoints
-- OPTIONS handler for CORS preflight, `Access-Control-Allow-Origin` on all responses
-- `crossorigin="anonymous"` on audio element to avoid ORB blocking
-- No byte-position sync — always plays from beginning (manual replay for new tracks)
-- Progressive cover art name reduction: strips parentheticals then last word
-- Fuzzy `titleMatch` (prefix + suffix ≥ 70% of search term) handles spaces, possessives, extra words
-- Faster initial polling (1.5s first check, then every 10s)
-- Cover image removed from template — created dynamically only when a cover is found
-- Reduced `max-width` constraint on track title for better wrapping
-- Cyan accent play button colors for better visibility
+- Play/stop button on now-playing display to stream music in the browser
+- CORS/ORB fixes for cross-origin audio requests
+- Progressive cover art name reduction + fuzzy title matching
 - Replace khinsider (server-side) with Wikipedia REST API (client-side) — bypasses Cloudflare 403
 - Fix slug ordering: `"X (video game)"` first, then `"X (game)"`, bare name last
 - Fix cover art race condition: stale Wikipedia responses discarded when track changes
@@ -191,7 +141,7 @@ webmanager-addon/
 
 ### v2.0 — Now Playing Music
 - Detect and display currently playing background music track
-- Cover art fetched from Wikipedia REST API (client-side, bypasses Cloudflare)
+- Cover art fetched from Wikipedia REST API
 - Loading state and "no music detected" fallback
 - English/French i18n support
 - New API endpoint: `/api/now-playing`
