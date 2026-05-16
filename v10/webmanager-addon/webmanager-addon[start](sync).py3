@@ -219,11 +219,14 @@ def get_now_playing():
     We compare fd read positions with a short delay — the fd whose position
     changes is the track currently being played.
     """
+    import sys as _sys
+    def _dbg(m): _sys.stderr.write("[wma-dbg] " + m + "\\n")
     try:
         result = subprocess.run(["pidof", "emulationstation"],
                                 capture_output=True, text=True)
         pid = result.stdout.strip()
         if not pid:
+            _dbg("ES pid not found (pidof returned empty)")
             return {{"playing": False, "track": None}}
 
         fd_dir = f"/proc/{{pid}}/fd"
@@ -235,6 +238,10 @@ def get_now_playing():
                 continue
             if "/music/" in target:
                 music_fds[fdname] = target
+
+        _dbg(f"ES pid={{pid}}, music_fds found={{len(music_fds)}}")
+        for fdnum, path in music_fds.items():
+            _dbg(f"  fd {{fdnum}} -> {{path}}")
 
         if not music_fds:
             return {{"playing": False, "track": None}}
@@ -254,8 +261,10 @@ def get_now_playing():
             return positions
 
         pos1 = read_positions()
+        _dbg(f"pos1={{pos1}}")
         time.sleep(1)
         pos2 = read_positions()
+        _dbg(f"pos2={{pos2}}")
 
         # The fd whose position changed is the active track
         for fdnum in pos1:
@@ -265,10 +274,13 @@ def get_now_playing():
                 filename = os.path.basename(track_path)
                 name = os.path.splitext(filename)[0]
                 byte_pos = pos2[fdnum]
+                _dbg(f"active track: fd={{fdnum}}, path={{track_path}}")
                 return {{"playing": True, "track": name, "file": filename, "filepath": track_path, "byte_pos": byte_pos}}
 
+        _dbg("no fd position changed")
         return {{"playing": False, "track": None}}
     except Exception as e:
+        _dbg(f"exception: {{e}}")
         return {{"playing": False, "track": None, "error": str(e)}}
 
 
